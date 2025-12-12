@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+venv39/
+tg_nft_bot/venv/
+
+# MacOS
+.DS_Store
+
+# Databases
+*.db
+
+# Excel
+*.xlsx
+
+# Temp / trash
+*.save
+=
+V
+textlb4pr
