@@ -4,28 +4,25 @@ app = Flask(__name__)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json(force=True)
+    data = request.get_json()
 
-    deleted = data.get("deleted_business_messages")
-    message = data.get("business_message")
+    print("========== RAW UPDATE ==========")
+    print(data)
+    print("================================")
 
-    if deleted:
-        chat = deleted.get("chat", {})
-        chat_id = chat.get("id")
-        message_ids = deleted.get("message_ids", [])
+    if not data:
+        return "ok"
 
-        print("🗑 УДАЛЕНИЕ СООБЩЕНИЯ")
-        print("Чат ID:", chat_id)
-        print("ID сообщений:", message_ids)
+    if "business_message" in data:
+        message = data["business_message"]
+        print("📩 ТЕКСТ:", message.get("text"))
 
-    elif message:
-        print("📩 НОВОЕ СООБЩЕНИЕ")
-        print("ID:", message.get("message_id"))
-        print("Текст:", message.get("text"))
+    elif "deleted_business_messages" in data:
+        deleted = data["deleted_business_messages"]
+        print("🗑 УДАЛЕНО СООБЩЕНИЕ:", deleted)
 
     else:
         print("⚪ ДРУГОЕ СОБЫТИЕ")
-        print(data)
 
     return "ok"
 
