@@ -5,6 +5,9 @@ BOT_TOKEN = "7557240631:AAFy8O4D-KMkwdlAI-QtV7AtVJ0hhdXgh90"
 
 app = Flask(__name__)
 
+# 🔐 глобально храним владельца бизнес-аккаунта
+OWNER_ID = None
+
 
 def send_to_user(user_id, text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -18,33 +21,38 @@ def send_to_user(user_id, text):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    global OWNER_ID
+
     data = request.get_json(silent=True)
 
-    print("========== RAW UPDATE ==========")
+    print("\n========== RAW UPDATE ==========")
     print(data)
-    print("================================")
+    print("================================\n")
 
     if not data:
         return "ok"
 
-    # 📩 обычное бизнес-сообщение
+    # 🔑 1. ПОДКЛЮЧЕНИЕ БИЗНЕС-АККАУНТА
+    if "business_connection" in data:
+        OWNER_ID = data["business_connection"]["user"]["id"]
+        print(f"✅ BUSINESS OWNER CONNECTED: {OWNER_ID}")
+        return "ok"
+
+    # 📩 2. ОБЫЧНОЕ БИЗНЕС-СООБЩЕНИЕ (ПОКА ТОЛЬКО ЛОГ)
     if "business_message" in data:
         msg = data["business_message"]
-        owner_id = msg["from"]["id"]
-        print("📩 СООБЩЕНИЕ ОТ:", owner_id)
+        print("📩 BUSINESS MESSAGE:",
+              "from:", msg.get("from", {}).get("id"),
+              "text:", msg.get("text"))
+        return "ok"
 
-    # 🗑 удалённые сообщения
-    elif "deleted_business_messages" in data:
-        deleted = data["deleted_business_messages"]
-
-        # ❗ owner_id БЕРЁМ ИЗ business_connection
-        owner_id = data.get("business_message", {}).get("from", {}).get("id")
-
-        # если не нашли — пробуем из предыдущего контекста
-        if not owner_id:
-            print("❌ owner_id не найден")
+    # 🗑 3. УДАЛЁННЫЕ СООБЩЕНИЯ
+    if "deleted_business_messages" in data:
+        if not OWNER_ID:
+            print("❌ OWNER_ID ещё не установлен")
             return "ok"
 
+        deleted = data["deleted_business_messages"]
         message_ids = deleted.get("message_ids", [])
         count = len(message_ids)
 
@@ -59,13 +67,15 @@ def webhook():
                 f"Количество: {count}"
             )
 
-        send_to_user(owner_id, text)
+        send_to_user(OWNER_ID, text)
+        print(f"🗑 Уведомление отправлено OWNER_ID={OWNER_ID}")
 
-    else:
-        print("⚪ ДРУГОЕ СОБЫТИЕ")
+        return "ok"
 
+    # ⚪ всё остальное игнорируем
+    print("⚪ ДРУГОЕ СОБЫТИЕ")
     return "ok"
 
 
-if __name__ == "__main__":
+if name == "__main__":
     app.run(host="0.0.0.0", port=8000)
