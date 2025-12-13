@@ -349,7 +349,7 @@ def webhook():
                     SELECT msg_type, file_id
                     FROM messages
                     WHERE owner_id = %s AND token = %s
-                    """, (chat_id, token))
+                    """, (owner_id, token))
                     r = cur.fetchone()
 
             if not r:
