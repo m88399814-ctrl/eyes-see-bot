@@ -174,42 +174,109 @@ def webhook():
     if not owner_id:
         return "ok"
 
-    if sender["id"] == owner_id and "reply_to_message" in msg:
-        replied = msg["reply_to_message"]
-
-        msg_type, file_id = media_from_message(replied)
-        if not msg_type:
+       # 2️⃣ business_message
+    if "business_message" in data:
+        msg = data["business_message"]
+        sender = msg["from"]
+    
+        # 🔐 2.1 ИСЧЕЗАЮЩИЕ СООБЩЕНИЯ (reply от владельца)
+        if sender["id"] == owner_id and "reply_to_message" in msg:
+            replied = msg["reply_to_message"]
+    
+            msg_type, file_id = media_from_message(replied)
+            if not msg_type:
+                return "ok"
+    
+            # проверка на дубликат
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT 1 FROM messages WHERE file_id = %s LIMIT 1",
+                        (file_id,)
+                    )
+                    if cur.fetchone():
+                        return "ok"
+    
+            token = uuid.uuid4().hex[:10]
+    
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                    INSERT INTO messages
+                    (owner_id, sender_id, sender_name, message_id,
+                     msg_type, text, file_id, token)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                    """, (
+                        owner_id,
+                        replied["from"]["id"],
+                        replied["from"].get("first_name", "Без имени"),
+                        replied["message_id"],
+                        msg_type,
+                        None,
+                        file_id,
+                        token
+                    ))
+    
+            labels = {
+                "photo": "📷 Фотография",
+                "video": "🎥 Видео",
+                "video_note": "🎥 Видеосообщение",
+                "voice": "🎤 Голосовое сообщение"
+            }
+    
+            header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
+            body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{labels[msg_type]}</a>'
+            who = (
+                f'\n\nОтправил(а): '
+                f'<a href="tg://user?id={replied["from"]["id"]}">'
+                f'{replied["from"].get("first_name","")}</a>'
+            )
+    
+            send_text(owner_id, header + body + who)
+            
             return "ok"
-
-        labels = {
-            "photo": "📷 Фотография",
-            "video": "🎥 Видео",
-            "video_note": "🎥 Видеосообщение",
-            "voice": "🎤 Голосовое сообщение"
-        }
-
-        header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
-        body = labels[msg_type]
-        who = (
-            f'\n\nОтправил(а): '
-            f'<a href="tg://user?id={replied["from"]["id"]}">'
-            f'{replied["from"].get("first_name","")}</a>'
-        )
-
-    # 1️⃣ уведомление (как у Catcher)
-        tg("sendMessage", {
-            "chat_id": owner_id,
-            "text": header + body + who,
-            "parse_mode": "HTML",
-            "reply_to_message_id": replied["message_id"]
-        })
-
-    # 2️⃣ ПЫТАЕМСЯ отправить файл (КЛЮЧЕВО)
-        try:
-            send_media(owner_id, msg_type, file_id, "ephemeral")
-        except:
-            pass
-
+    
+        # 📩 2.2 ОБЫЧНЫЕ сообщения СОБЕСЕДНИКА
+        if sender["id"] == owner_id:
+            return "ok"
+    
+        msg_type = "text"
+        text = msg.get("text")
+        file_id = None
+    
+        if "photo" in msg:
+            msg_type = "photo"
+            file_id = msg["photo"][-1]["file_id"]
+        elif "video" in msg:
+            msg_type = "video"
+            file_id = msg["video"]["file_id"]
+        elif "video_note" in msg:
+            msg_type = "video_note"
+            file_id = msg["video_note"]["file_id"]
+        elif "voice" in msg:
+            msg_type = "voice"
+            file_id = msg["voice"]["file_id"]
+    
+        token = uuid.uuid4().hex[:10]
+    
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                INSERT INTO messages
+                (owner_id, sender_id, sender_name, message_id,
+                 msg_type, text, file_id, token)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    owner_id,
+                    sender["id"],
+                    sender.get("first_name", "Без имени"),
+                    msg["message_id"],
+                    msg_type,
+                    text,
+                    file_id,
+                    token
+                ))
+    
         return "ok"
 
         # ❌ сообщения владельца НЕ сохраняем
