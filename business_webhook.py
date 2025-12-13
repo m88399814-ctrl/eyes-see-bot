@@ -106,6 +106,17 @@ def send_media(chat_id, msg_type, file_id, token):
         "reply_markup": hide
     })
 
+def media_from_message(msg):
+    if "photo" in msg:
+        return "photo", msg["photo"][-1]["file_id"]
+    if "video" in msg:
+        return "video", msg["video"]["file_id"]
+    if "video_note" in msg:
+        return "video_note", msg["video_note"]["file_id"]
+    if "voice" in msg:
+        return "voice", msg["voice"]["file_id"]
+    return None, None
+
 # ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
@@ -129,10 +140,70 @@ def webhook():
     if "business_message" in data:
         msg = data["business_message"]
         sender = msg["from"]
-
+            # 🔐 ИСЧЕЗАЮЩИЕ СООБЩЕНИЯ (через reply)
+        if "business_message" in data:
+            msg = data["business_message"]
+            sender = msg["from"]
+    
+            # реагируем ТОЛЬКО на reply владельца
+            if sender["id"] == owner_id and "reply_to_message" in msg:
+                replied = msg["reply_to_message"]
+    
+                msg_type, file_id = media_from_message(replied)
+                if not msg_type:
+                    return "ok"
+    
+                # проверяем, не сохраняли ли уже этот файл
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT 1 FROM messages WHERE file_id = %s LIMIT 1",
+                            (file_id,)
+                        )
+                        if cur.fetchone():
+                            return "ok"
+    
+                token = uuid.uuid4().hex[:10]
+    
+                # сохраняем
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                        INSERT INTO messages
+                        (owner_id, sender_id, sender_name, message_id,
+                         msg_type, text, file_id, token)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                        """, (
+                            owner_id,
+                            replied["from"]["id"],
+                            replied["from"].get("first_name", "Без имени"),
+                            replied["message_id"],
+                            msg_type,
+                            None,
+                            file_id,
+                            token
+                        ))
+    
+                labels = {
+                    "photo": "📷 Фотография",
+                    "video": "🎥 Видео",
+                    "video_note": "🎥 Видеосообщение",
+                    "voice": "🎤 Голосовое сообщение"
+                }
+    
+                header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
+                body = labels[msg_type]
+                who = f'\n\nОтправил(а): <a href="tg://user?id={replied["from"]["id"]}">{replied["from"].get("first_name","")}</a>'
+    
+                send_text(owner_id, header + body + who)
+    
+                # сразу отправляем файл
+                send_media(owner_id, msg_type, file_id, token)
+    
+                return "ok"
         if sender["id"] == owner_id:
             return "ok"
-
+        
         msg_type = "text"
         text = msg.get("text")
         file_id = None
