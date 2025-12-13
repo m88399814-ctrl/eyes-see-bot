@@ -192,7 +192,7 @@ def webhook():
                 }
     
                 header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
-                body = labels[msg_type]
+                body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{labels[msg_type]}</a>'
                 who = f'\n\nОтправил(а): <a href="tg://user?id={replied["from"]["id"]}">{replied["from"].get("first_name","")}</a>'
     
                 send_text(owner_id, header + body + who)
@@ -269,7 +269,7 @@ def webhook():
                 blocks.append(f"<blockquote>{text}</blockquote>")
             else:
                 label = {
-                    "photo": "📷 Фото",
+                    "photo": "📷 Фотография",
                     "video": "🎥 Видео",
                     "video_note": "🎥 Видеосообщение",
                     "voice": "🎤 Голосовое сообщение"
