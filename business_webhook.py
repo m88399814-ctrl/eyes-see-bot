@@ -209,10 +209,17 @@ def webhook():
 
         if blocks:
             who = f'\n\nУдалил(а): <a href="tg://user?id={sender_id}">{sender_name}</a>'
+            title = (
+                "🗑 <b>Новое удалённое сообщение</b>\n\n"
+                if len(blocks) == 1
+                else "🗑 <b>Новые удалённые сообщения</b>\n\n"
+            )
+
             send_text(
                 owner_id,
-                "🗑 <b>Новое удалённое сообщение</b>\n\n" +
-                "\n".join(blocks) + who
+                title +
+                "\n".join(blocks) +
+                who
             )
         return "ok"
 
