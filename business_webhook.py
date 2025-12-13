@@ -35,6 +35,8 @@ def init_db():
                 text TEXT,
                 file_id TEXT,
                 token TEXT UNIQUE,
+                src_chat_id BIGINT,
+                src_message_id BIGINT,
                 created_at TIMESTAMP DEFAULT NOW()
             )
             """)
@@ -282,6 +284,8 @@ def webhook():
         # 2.1) Исчезающее: владелец ответил (reply) на сообщение
         if sender.get("id") == owner_id and "reply_to_message" in msg:
             replied = msg["reply_to_message"]
+            src_chat_id = replied.get("chat", {}).get("id")
+            src_message_id = replied.get("message_id")
 
             msg_type, file_id = media_from_message(replied)
             if not msg_type or not file_id:
@@ -298,22 +302,24 @@ def webhook():
             token = uuid.uuid4().hex[:10]
 
             # сохраняем
-            with get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                    INSERT INTO messages
-                    (owner_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                    """, (
-                        owner_id,
-                        replied.get("from", {}).get("id", 0),
-                        replied.get("from", {}).get("first_name", "Без имени"),
-                        replied.get("message_id", 0),
-                        msg_type,
-                        None,
-                        file_id,
-                        token
-                    ))
+           with get_db() as conn:
+               with conn.cursor() as cur:
+                   cur.execute("""
+                   INSERT INTO messages
+                   (owner_id, sender_id, sender_name, message_id, msg_type, text, file_id, token, src_chat_id, src_message_id)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   """, (
+                       owner_id,
+                       replied.get("from", {}).get("id", 0),
+                       replied.get("from", {}).get("first_name", "Без имени"),
+                       replied.get("message_id", 0),
+                       msg_type,
+                       None,
+                       file_id,
+                       token,
+                       src_chat_id,
+                       src_message_id
+                   ))
                 conn.commit()
 
             header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
@@ -427,7 +433,7 @@ def webhook():
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
-                    SELECT msg_type, file_id
+                    SELECT msg_type, file_id, src_chat_id, src_message_id
                     FROM messages
                     WHERE owner_id = %s AND token = %s
                     """, (owner_id, token))
@@ -442,7 +448,19 @@ def webhook():
                 )
                 return "ok"
 
-            msg_type, file_id = r
+            msg_type, file_id, src_chat_id, src_message_id = r
+
+
+            # 🔑 ДЛЯ СЕКРЕТНЫХ ФОТО И КРУЖКОВ — ТОЛЬКО COPY
+            if msg_type in ("photo", "video_note"):
+                tg("sendCopyMessage", {
+                    "chat_id": chat_id,
+                    "from_chat_id": src_chat_id,
+                    "message_id": src_message_id
+                })
+                return "ok"
+
+            # 🔁 ВСЁ ОСТАЛЬНОЕ — КАК РАНЬШЕ
             send_media(chat_id, msg_type, file_id, token)
             return "ok"
 
