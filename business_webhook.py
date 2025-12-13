@@ -164,7 +164,7 @@ def webhook():
             # 1️⃣ сначала копируем сообщение
             tg("sendCopyMessage", {
                 "chat_id": owner_id,
-                "from_chat_id": msg["chat"]["id"],
+                "from_chat_id": replied["chat"]["id"],
                 "message_id": replied["message_id"]
             })
             
