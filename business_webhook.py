@@ -482,13 +482,4 @@ def webhook():
 
 if __name__ == "__main__":
     init_db()
-
-    # 🔴 ОДНОРАЗОВАЯ ОЧИСТКА СТАРЫХ ЗАПИСЕЙ
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM messages;")
-    conn.commit()
-    cur.close()
-    conn.close()
-
     app.run(host="0.0.0.0", port=8000)
