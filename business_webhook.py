@@ -1,5 +1,4 @@
 import os
-import time
 import uuid
 import psycopg2
 import requests
@@ -10,7 +9,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 app = Flask(__name__)
 
-# ---------------- DB ----------------
+# ================= DB =================
 
 def get_db():
     return psycopg2.connect(DATABASE_URL)
@@ -18,19 +17,20 @@ def get_db():
 def init_db():
     with get_db() as conn:
         with conn.cursor() as cur:
+            cur.execute("DROP TABLE IF EXISTS messages;")
             cur.execute("""
-            CREATE TABLE IF NOT EXISTS messages (
+            CREATE TABLE messages (
                 id SERIAL PRIMARY KEY,
-                owner_id BIGINT,
-                sender_id BIGINT,
+                owner_id BIGINT NOT NULL,
+                sender_id BIGINT NOT NULL,
                 sender_name TEXT,
-                chat_id BIGINT,
-                message_id BIGINT,
-                msg_type TEXT,
+                chat_id BIGINT NOT NULL,
+                message_id BIGINT NOT NULL,
+                msg_type TEXT NOT NULL,
                 text TEXT,
                 file_id TEXT,
-                token TEXT,
-                created_at TIMESTAMP DEFAULT NOW()
+                token TEXT UNIQUE,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
             )
             """)
         conn.commit()
@@ -44,33 +44,33 @@ def cleanup_old():
             """)
         conn.commit()
 
-# ---------------- TG API ----------------
+# ================= TG API =================
 
 def tg(method, data):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
     return requests.post(url, json=data)
 
-def send(owner_id, text):
+def send_text(chat_id, text):
     tg("sendMessage", {
-        "chat_id": owner_id,
+        "chat_id": chat_id,
         "text": text,
         "parse_mode": "HTML"
     })
 
-def send_file(owner_id, msg_type, file_id):
-    method = {
+def send_file(chat_id, msg_type, file_id):
+    methods = {
         "photo": "sendPhoto",
         "video": "sendVideo",
         "video_note": "sendVideoNote",
         "voice": "sendVoice"
-    }[msg_type]
-
-    tg(method, {
-        "chat_id": owner_id,
-        msg_type if msg_type != "video_note" else "video_note": file_id
+    }
+    payload_key = "video_note" if msg_type == "video_note" else msg_type
+    tg(methods[msg_type], {
+        "chat_id": chat_id,
+        payload_key: file_id
     })
 
-# ---------------- WEBHOOK ----------------
+# ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -80,14 +80,14 @@ def webhook():
     if not data:
         return "ok"
 
-    # 📩 сообщение от собеседника → СОХРАНЯЕМ
+    # 📩 сообщение от СОБЕСЕДНИКА → сохраняем
     if "business_message" in data:
         msg = data["business_message"]
         owner_id = msg["business_connection_id"]
         sender = msg["from"]
 
         if sender["id"] == owner_id:
-            return "ok"  # не сохраняем сообщения владельца
+            return "ok"
 
         msg_type = "text"
         text = msg.get("text")
@@ -118,7 +118,7 @@ def webhook():
                 """, (
                     owner_id,
                     sender["id"],
-                    sender.get("first_name", ""),
+                    sender.get("first_name", "Без имени"),
                     msg["chat"]["id"],
                     msg["message_id"],
                     msg_type,
@@ -128,7 +128,7 @@ def webhook():
                 ))
             conn.commit()
 
-    # 🗑 удаление сообщения
+    # 🗑 удаление сообщения СОБЕСЕДНИКОМ
     elif "deleted_business_messages" in data:
         deleted = data["deleted_business_messages"]
         owner_id = deleted["business_connection_id"]
@@ -148,25 +148,23 @@ def webhook():
 
             msg_type, text, file_id, sender_name, token = row
 
-            header = "🗑 <b>Новое удалённое сообщение</b>\n\n"
+            header = "🗑 <b>Удалённое сообщение</b>\n\n"
 
             if msg_type == "text":
                 body = f"<blockquote>{text}</blockquote>"
             else:
-                label = {
-                    "photo": "📷 Фотография",
+                labels = {
+                    "photo": "📷 Фото",
                     "video": "📹 Видео",
                     "video_note": "📹 Видеосообщение",
                     "voice": "🎤 Голосовое сообщение"
-                }[msg_type]
+                }
+                body = f"{labels[msg_type]}\n/get_{token}"
 
-                body = f"{label}\n/get_{token}"
+            footer = f"\n\nУдалил(а): <b>{sender_name}</b>"
+            send_text(owner_id, header + body + footer)
 
-            footer = f"\n\nУдалил(а): <a href=\"tg://user?id={sender_name}\">{sender_name}</a>"
-
-            send(owner_id, header + body + footer)
-
-    # 🔁 обработка команды открытия файла
+    # 🔁 команда открытия файла
     elif "message" in data:
         msg = data["message"]
         text = msg.get("text", "")
@@ -184,14 +182,13 @@ def webhook():
                     """, (token,))
                     row = cur.fetchone()
 
-            # удалить команду
             tg("deleteMessage", {
                 "chat_id": owner_id,
                 "message_id": msg["message_id"]
             })
 
             if not row:
-                send(owner_id, "❌ Не получилось открыть файл 😔\nВозможно он был отправлен слишком давно")
+                send_text(owner_id, "❌ Файл недоступен (возможно прошло больше 18 часов)")
                 return "ok"
 
             msg_type, file_id = row
@@ -199,7 +196,7 @@ def webhook():
 
     return "ok"
 
-# ---------------- START ----------------
+# ================= START =================
 
 if __name__ == "__main__":
     init_db()
