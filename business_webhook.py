@@ -9,7 +9,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 app = Flask(__name__)
 
-# ================= DATABASE =================
+# ================= DB =================
 
 def db():
     return psycopg2.connect(DATABASE_URL)
@@ -17,23 +17,12 @@ def db():
 def init_db():
     with db() as conn:
         with conn.cursor() as cur:
-            # владелец бизнес-аккаунта
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS owners (
-                owner_id BIGINT PRIMARY KEY
-            )
-            """)
-
-            # сообщения собеседников
             cur.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
-                owner_id BIGINT NOT NULL,
-                sender_id BIGINT NOT NULL,
-                sender_name TEXT,
-                chat_id BIGINT NOT NULL,
-                message_id BIGINT NOT NULL,
-                msg_type TEXT NOT NULL,
+                owner_id BIGINT,
+                message_id BIGINT,
+                msg_type TEXT,
                 text TEXT,
                 file_id TEXT,
                 token TEXT UNIQUE,
@@ -42,81 +31,72 @@ def init_db():
             """)
         conn.commit()
 
-def cleanup_old():
+def cleanup():
     with db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-            DELETE FROM messages
-            WHERE created_at < NOW() - INTERVAL '18 hours'
+                DELETE FROM messages
+                WHERE created_at < NOW() - INTERVAL '18 hours'
             """)
         conn.commit()
 
-def get_owner():
-    with db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT owner_id FROM owners LIMIT 1")
-            row = cur.fetchone()
-            return row[0] if row else None
-
-# ================= TELEGRAM API =================
+# ================= TG API =================
 
 def tg(method, payload):
     return requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/{method}",
-        json=payload,
-        timeout=10
+        json=payload
     )
 
-def send_text(chat_id, text):
-    tg("sendMessage", {
+def send_message(chat_id, text, buttons=None):
+    data = {
         "chat_id": chat_id,
         "text": text,
         "parse_mode": "HTML"
-    })
+    }
+    if buttons:
+        data["reply_markup"] = {"inline_keyboard": buttons}
+    tg("sendMessage", data)
 
 def send_file(chat_id, msg_type, file_id):
-    methods = {
-        "photo": ("sendPhoto", "photo"),
-        "video": ("sendVideo", "video"),
-        "video_note": ("sendVideoNote", "video_note"),
-        "voice": ("sendVoice", "voice")
-    }
-    method, key = methods[msg_type]
-    tg(method, {"chat_id": chat_id, key: file_id})
+    method = {
+        "photo": "sendPhoto",
+        "video": "sendVideo",
+        "video_note": "sendVideoNote",
+        "voice": "sendVoice"
+    }[msg_type]
+
+    payload_key = "video_note" if msg_type == "video_note" else msg_type
+
+    r = tg(method, {
+        "chat_id": chat_id,
+        payload_key: file_id,
+        "reply_markup": {
+            "inline_keyboard": [[
+                {"text": "✖️ Скрыть", "callback_data": "hide"}
+            ]]
+        }
+    })
+    return r.json().get("result", {}).get("message_id")
 
 # ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json(silent=True)
-    cleanup_old()
+    cleanup()
 
     if not data:
         return "ok"
 
-    # 🔐 фиксируем владельца бизнес-аккаунта ОДИН РАЗ
-    if "business_connection" in data:
-        owner_id = data["business_connection"]["user"]["id"]
-        with db() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO owners (owner_id) VALUES (%s) ON CONFLICT DO NOTHING",
-                    (owner_id,)
-                )
-            conn.commit()
-        return "ok"
-
-    owner_id = get_owner()
-    if not owner_id:
-        return "ok"
-
-    # ================= СООБЩЕНИЕ ОТ СОБЕСЕДНИКА =================
+    # ---------- СООБЩЕНИЕ ОТ СОБЕСЕДНИКА ----------
     if "business_message" in data:
         msg = data["business_message"]
-        sender = msg["from"]
+        owner_id = msg["business_connection_id"]
+        sender_id = msg["from"]["id"]
 
-        # ❌ не сохраняем сообщения владельца
-        if sender["id"] == owner_id:
+        # игнорируем сообщения владельца
+        if sender_id == owner_id:
             return "ok"
 
         msg_type = "text"
@@ -136,20 +116,16 @@ def webhook():
             msg_type = "voice"
             file_id = msg["voice"]["file_id"]
 
-        token = uuid.uuid4().hex[:8]
+        token = uuid.uuid4().hex[:10]
 
         with db() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                INSERT INTO messages
-                (owner_id, sender_id, sender_name, chat_id, message_id,
-                 msg_type, text, file_id, token)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    INSERT INTO messages
+                    (owner_id, message_id, msg_type, text, file_id, token)
+                    VALUES (%s,%s,%s,%s,%s,%s)
                 """, (
                     owner_id,
-                    sender["id"],
-                    sender.get("first_name", "Без имени"),
-                    msg["chat"]["id"],
                     msg["message_id"],
                     msg_type,
                     text,
@@ -158,29 +134,31 @@ def webhook():
                 ))
             conn.commit()
 
-    # ================= УДАЛЕНИЕ СООБЩЕНИЯ СОБЕСЕДНИКОМ =================
+    # ---------- УДАЛЕНИЕ СООБЩЕНИЯ ----------
     elif "deleted_business_messages" in data:
-        deleted = data["deleted_business_messages"]
+        d = data["deleted_business_messages"]
+        owner_id = d["business_connection_id"]
 
-        for mid in deleted["message_ids"]:
+        for mid in d["message_ids"]:
             with db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
-                    SELECT msg_type, text, file_id, sender_name, token
-                    FROM messages
-                    WHERE message_id = %s AND owner_id = %s
-                    """, (mid, owner_id))
+                        SELECT msg_type, text, file_id, token
+                        FROM messages
+                        WHERE message_id = %s
+                    """, (mid,))
                     row = cur.fetchone()
 
             if not row:
                 continue
 
-            msg_type, text, file_id, sender_name, token = row
+            msg_type, text, file_id, token = row
 
             header = "🗑 <b>Новое удалённое сообщение</b>\n\n"
 
             if msg_type == "text":
                 body = f"<blockquote>{text}</blockquote>"
+                send_message(owner_id, header + body)
             else:
                 labels = {
                     "photo": "📷 Фотография",
@@ -188,37 +166,44 @@ def webhook():
                     "video_note": "📹 Видеосообщение",
                     "voice": "🎤 Голосовое сообщение"
                 }
-                body = f"{labels[msg_type]}\n/get_{token}"
 
-            footer = f"\n\nУдалил(а): <a href=\"tg://user?id={owner_id}\">{sender_name}</a>"
-            send_text(owner_id, header + body + footer)
+                send_message(
+                    owner_id,
+                    header + labels[msg_type],
+                    buttons=[[{
+                        "text": labels[msg_type],
+                        "callback_data": f"open:{token}"
+                    }]]
+                )
 
-    # ================= ОТКРЫТИЕ ФАЙЛА =================
-    elif "message" in data:
-        msg = data["message"]
-        text = msg.get("text", "")
+    # ---------- CALLBACK ----------
+    elif "callback_query" in data:
+        cq = data["callback_query"]
+        chat_id = cq["message"]["chat"]["id"]
+        msg_id = cq["message"]["message_id"]
+        data_cb = cq["data"]
 
-        if text.startswith("/get_"):
-            token = text.replace("/get_", "")
-            chat_id = msg["chat"]["id"]
+        if data_cb == "hide":
+            tg("deleteMessage", {
+                "chat_id": chat_id,
+                "message_id": msg_id
+            })
+            return "ok"
+
+        if data_cb.startswith("open:"):
+            token = data_cb.split(":")[1]
 
             with db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
-                    SELECT msg_type, file_id
-                    FROM messages
-                    WHERE token = %s AND owner_id = %s
-                    """, (token, chat_id))
+                        SELECT msg_type, file_id
+                        FROM messages
+                        WHERE token = %s
+                    """, (token,))
                     row = cur.fetchone()
 
-            # удалить команду
-            tg("deleteMessage", {
-                "chat_id": chat_id,
-                "message_id": msg["message_id"]
-            })
-
             if not row:
-                send_text(chat_id, "❌ Не получилось открыть файл 😔\nВозможно он был отправлен слишком давно")
+                send_message(chat_id, "❌ Файл недоступен (прошло больше 18 часов)")
                 return "ok"
 
             msg_type, file_id = row
