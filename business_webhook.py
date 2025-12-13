@@ -161,12 +161,16 @@ def webhook():
             )
 
             # 🔥 КЛЮЧ: reply к оригиналу
-            tg("sendMessage", {
+            # 1️⃣ сначала копируем сообщение
+            tg("sendCopyMessage", {
                 "chat_id": owner_id,
-                "text": header + body + who,
-                "parse_mode": "HTML",
-                "reply_to_message_id": replied["message_id"]
+                "from_chat_id": msg["chat"]["id"],
+                "message_id": replied["message_id"]
             })
+            
+            # 2️⃣ потом отправляем подпись
+            send_text(owner_id, header + body + who)
+
 
             return "ok"
 
