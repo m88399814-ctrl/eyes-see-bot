@@ -174,71 +174,48 @@ def webhook():
     if not owner_id:
         return "ok"
 
-    # 2) сохраняем сообщения собеседника
+    # 2) business_message
     if "business_message" in data:
         msg = data["business_message"]
         sender = msg["from"]
-            # 🔐 ИСЧЕЗАЮЩИЕ СООБЩЕНИЯ (через reply)
-        if "business_message" in data:
-            msg = data["business_message"]
-            sender = msg["from"]
-    
-            # реагируем ТОЛЬКО на reply владельца
-            if sender["id"] == owner_id and "reply_to_message" in msg:
-                replied = msg["reply_to_message"]
-    
-                msg_type, file_id = media_from_message(replied)
-                if not msg_type:
-                    return "ok"
-    
-                # проверяем, не сохраняли ли уже этот файл
-                with get_db() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "SELECT 1 FROM messages WHERE file_id = %s LIMIT 1",
-                            (file_id,)
-                        )
-                        if cur.fetchone():
-                            return "ok"
-    
-                token = uuid.uuid4().hex[:10]
-    
-                # сохраняем
-                with get_db() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("""
-                        INSERT INTO messages
-                        (owner_id, sender_id, sender_name, message_id,
-                         msg_type, text, file_id, token)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                        """, (
-                            owner_id,
-                            replied["from"]["id"],
-                            replied["from"].get("first_name", "Без имени"),
-                            replied["message_id"],
-                            msg_type,
-                            None,
-                            file_id,
-                            token
-                        ))
-    
-                labels = {
-                    "photo": "📷 Фотография",
-                    "video": "🎥 Видео",
-                    "video_note": "🎥 Видеосообщение",
-                    "voice": "🎤 Голосовое сообщение"
-                }
-    
-                header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
-                body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{labels[msg_type]}</a>'
-                who = f'\n\nОтправил(а): <a href="tg://user?id={replied["from"]["id"]}">{replied["from"].get("first_name","")}</a>'
-    
-                send_text(owner_id, header + body + who)
-    
+
+        # 🔐 ИСЧЕЗАЮЩИЕ СООБЩЕНИЯ (reply от владельца — как Catcher)
+        if sender["id"] == owner_id and "reply_to_message" in msg:
+            replied = msg["reply_to_message"]
+
+            msg_type, file_id = media_from_message(replied)
+            if not msg_type:
                 return "ok"
+
+            labels = {
+                "photo": "📷 Фотография",
+                "video": "🎥 Видео",
+                "video_note": "🎥 Видеосообщение",
+                "voice": "🎤 Голосовое сообщение"
+            }
+
+            header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
+            body = labels[msg_type]
+            who = (
+                f'\n\nОтправил(а): '
+                f'<a href="tg://user?id={replied["from"]["id"]}">'
+                f'{replied["from"].get("first_name","")}</a>'
+            )
+
+            tg("sendMessage", {
+                "chat_id": owner_id,
+                "text": header + body + who,
+                "parse_mode": "HTML",
+                "reply_to_message_id": replied["message_id"]
+            })
+
+            return "ok"
+
+        # ❌ сообщения владельца НЕ сохраняем
         if sender["id"] == owner_id:
             return "ok"
-        
+
+        # 💬 сообщения собеседника → сохраняем
         msg_type = "text"
         text = msg.get("text")
         file_id = None
@@ -275,6 +252,7 @@ def webhook():
                     file_id,
                     token
                 ))
+
         return "ok"
 
     # 3) удаление сообщений (группировка 1 сек)
@@ -289,7 +267,7 @@ def webhook():
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
-                    SELECT msg_type, text, file_id, sender_name, sender_id, token
+                    SELECT msg_type, text, sender_name, sender_id, token
                     FROM messages
                     WHERE owner_id = %s AND message_id = %s
                     """, (owner_id, mid))
@@ -298,7 +276,7 @@ def webhook():
             if not r:
                 continue
 
-            msg_type, text, file_id, sender_name, sender_id, token = r
+            msg_type, text, sender_name, sender_id, token = r
 
             if msg_type == "text":
                 blocks.append(f"<blockquote>{text}</blockquote>")
@@ -310,23 +288,21 @@ def webhook():
                     "voice": "🎤 Голосовое сообщение"
                 }[msg_type]
 
-                link = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label}</a>'
-                blocks.append(link)
+                blocks.append(
+                    f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label}</a>'
+                )
 
         if blocks:
-            who = f'\n\nУдалил(а): <a href="tg://user?id={sender_id}">{sender_name}</a>'
             title = (
                 "🗑 <b>Новое удалённое сообщение</b>\n\n"
                 if len(blocks) == 1
                 else "🗑 <b>Новые удалённые сообщения</b>\n\n"
             )
 
-            send_text(
-                owner_id,
-                title +
-                "\n".join(blocks) +
-                who
-            )
+            who = f'\n\nУдалил(а): <a href="tg://user?id={sender_id}">{sender_name}</a>'
+
+            send_text(owner_id, title + "\n".join(blocks) + who)
+
         return "ok"
 
     # 4) /start TOKEN → открыть файл
@@ -381,7 +357,6 @@ def webhook():
         return "ok"
 
     return "ok"
-
 # ================= START =================
 
 if __name__ == "__main__":
