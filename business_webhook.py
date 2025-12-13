@@ -1,20 +1,16 @@
 import os
 import time
-import json
-import requests
+import uuid
 import psycopg2
+import requests
 from flask import Flask, request
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
-
-RETENTION_SECONDS = 18 * 60 * 60  # 18 часов
-
 app = Flask(__name__)
 
-# ---------- DB ----------
+# ---------------- DB ----------------
 
 def get_db():
     return psycopg2.connect(DATABASE_URL)
@@ -26,187 +22,185 @@ def init_db():
             CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
                 owner_id BIGINT,
+                sender_id BIGINT,
+                sender_name TEXT,
                 chat_id BIGINT,
                 message_id BIGINT,
-                sender_id BIGINT,
-                type TEXT,
-                content TEXT,
+                msg_type TEXT,
+                text TEXT,
                 file_id TEXT,
-                created_at BIGINT
+                token TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
             )
             """)
         conn.commit()
 
-init_db()
-
 def cleanup_old():
-    cutoff = int(time.time()) - RETENTION_SECONDS
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM messages WHERE created_at < %s", (cutoff,))
+            cur.execute("""
+            DELETE FROM messages
+            WHERE created_at < NOW() - INTERVAL '18 hours'
+            """)
         conn.commit()
 
-# ---------- Telegram helpers ----------
+# ---------------- TG API ----------------
 
-def send_message(chat_id, text, reply_markup=None):
-    payload = {
-        "chat_id": chat_id,
+def tg(method, data):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
+    return requests.post(url, json=data)
+
+def send(owner_id, text):
+    tg("sendMessage", {
+        "chat_id": owner_id,
         "text": text,
         "parse_mode": "HTML"
-    }
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
-    requests.post(f"{API_URL}/sendMessage", json=payload)
+    })
 
-def send_file(chat_id, msg):
-    try:
-        if msg["type"] == "photo":
-            requests.post(f"{API_URL}/sendPhoto", json={
-                "chat_id": chat_id,
-                "photo": msg["file_id"]
-            })
-        elif msg["type"] == "voice":
-            requests.post(f"{API_URL}/sendVoice", json={
-                "chat_id": chat_id,
-                "voice": msg["file_id"]
-            })
-        elif msg["type"] == "video_note":
-            requests.post(f"{API_URL}/sendVideoNote", json={
-                "chat_id": chat_id,
-                "video_note": msg["file_id"]
-            })
-        elif msg["type"] == "video":
-            requests.post(f"{API_URL}/sendVideo", json={
-                "chat_id": chat_id,
-                "video": msg["file_id"]
-            })
-    except:
-        send_message(chat_id, "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он был отправлен слишком давно")
+def send_file(owner_id, msg_type, file_id):
+    method = {
+        "photo": "sendPhoto",
+        "video": "sendVideo",
+        "video_note": "sendVideoNote",
+        "voice": "sendVoice"
+    }[msg_type]
 
-# ---------- Webhook ----------
+    tg(method, {
+        "chat_id": owner_id,
+        msg_type if msg_type != "video_note" else "video_note": file_id
+    })
+
+# ---------------- WEBHOOK ----------------
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json(silent=True)
+    cleanup_old()
+
     if not data:
         return "ok"
 
-    cleanup_old()
-
-    # OWNER
-    if "business_connection" in data:
-        owner_id = data["business_connection"]["user"]["id"]
-        return "ok"
-
-    # MESSAGE
+    # 📩 сообщение от собеседника → СОХРАНЯЕМ
     if "business_message" in data:
         msg = data["business_message"]
-        owner_id = msg["from"]["id"] if msg["from"]["is_bot"] is False else None
-        chat_id = msg["chat"]["id"]
-        sender_id = msg["from"]["id"]
+        owner_id = msg["business_connection_id"]
+        sender = msg["from"]
 
-        # владелец → не сохраняем
-        if sender_id == owner_id:
-            return "ok"
+        if sender["id"] == owner_id:
+            return "ok"  # не сохраняем сообщения владельца
 
         msg_type = "text"
-        content = msg.get("text")
+        text = msg.get("text")
         file_id = None
 
         if "photo" in msg:
             msg_type = "photo"
             file_id = msg["photo"][-1]["file_id"]
-        elif "voice" in msg:
-            msg_type = "voice"
-            file_id = msg["voice"]["file_id"]
-        elif "video_note" in msg:
-            msg_type = "video_note"
-            file_id = msg["video_note"]["file_id"]
         elif "video" in msg:
             msg_type = "video"
             file_id = msg["video"]["file_id"]
+        elif "video_note" in msg:
+            msg_type = "video_note"
+            file_id = msg["video_note"]["file_id"]
+        elif "voice" in msg:
+            msg_type = "voice"
+            file_id = msg["voice"]["file_id"]
+
+        token = uuid.uuid4().hex[:8]
 
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                INSERT INTO messages (owner_id, chat_id, message_id, sender_id, type, content, file_id, created_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                INSERT INTO messages
+                (owner_id, sender_id, sender_name, chat_id, message_id,
+                 msg_type, text, file_id, token)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """, (
                     owner_id,
-                    chat_id,
+                    sender["id"],
+                    sender.get("first_name", ""),
+                    msg["chat"]["id"],
                     msg["message_id"],
-                    sender_id,
                     msg_type,
-                    content,
+                    text,
                     file_id,
-                    int(time.time())
+                    token
                 ))
             conn.commit()
 
-    # DELETE
-    if "deleted_business_messages" in data:
+    # 🗑 удаление сообщения
+    elif "deleted_business_messages" in data:
         deleted = data["deleted_business_messages"]
-        chat_id = deleted["chat"]["id"]
+        owner_id = deleted["business_connection_id"]
 
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                SELECT * FROM messages
-                WHERE chat_id=%s AND message_id = ANY(%s)
-                """, (chat_id, deleted["message_ids"]))
-                rows = cur.fetchall()
+        for mid in deleted["message_ids"]:
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                    SELECT msg_type, text, file_id, sender_name, token
+                    FROM messages
+                    WHERE message_id = %s
+                    """, (mid,))
+                    row = cur.fetchone()
 
-        for r in rows:
-            msg = {
-                "type": r[5],
-                "content": r[6],
-                "file_id": r[7]
-            }
+            if not row:
+                continue
 
-            label = {
-                "photo": "📷 Фотография",
-                "voice": "🎤 Голосовое сообщение",
-                "video_note": "📹 Видеосообщение",
-                "video": "📹 Видео",
-                "text": msg["content"]
-            }.get(msg["type"], "Сообщение")
+            msg_type, text, file_id, sender_name, token = row
 
-            keyboard = {
-                "inline_keyboard": [[
-                    {
-                        "text": label,
-                        "callback_data": f"open_{r[0]}"
-                    }
-                ]]
-            }
+            header = "🗑 <b>Новое удалённое сообщение</b>\n\n"
 
-            send_message(
-                r[1],
-                "🗑 <b>Новое удалённое сообщение</b>",
-                keyboard
-            )
+            if msg_type == "text":
+                body = f"<blockquote>{text}</blockquote>"
+            else:
+                label = {
+                    "photo": "📷 Фотография",
+                    "video": "📹 Видео",
+                    "video_note": "📹 Видеосообщение",
+                    "voice": "🎤 Голосовое сообщение"
+                }[msg_type]
 
-    # CALLBACK
-    if "callback_query" in data:
-        cq = data["callback_query"]
-        chat_id = cq["message"]["chat"]["id"]
-        msg_id = int(cq["data"].split("_")[1])
+                body = f"{label}\n/get_{token}"
 
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT * FROM messages WHERE id=%s", (msg_id,))
-                row = cur.fetchone()
+            footer = f"\n\nУдалил(а): <a href=\"tg://user?id={sender_name}\">{sender_name}</a>"
 
-        if not row:
-            send_message(chat_id, "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он был отправлен слишком давно")
-            return "ok"
+            send(owner_id, header + body + footer)
 
-        send_file(chat_id, {
-            "type": row[5],
-            "file_id": row[7]
-        })
+    # 🔁 обработка команды открытия файла
+    elif "message" in data:
+        msg = data["message"]
+        text = msg.get("text", "")
+
+        if text.startswith("/get_"):
+            token = text.replace("/get_", "")
+            owner_id = msg["chat"]["id"]
+
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                    SELECT msg_type, file_id
+                    FROM messages
+                    WHERE token = %s
+                    """, (token,))
+                    row = cur.fetchone()
+
+            # удалить команду
+            tg("deleteMessage", {
+                "chat_id": owner_id,
+                "message_id": msg["message_id"]
+            })
+
+            if not row:
+                send(owner_id, "❌ Не получилось открыть файл 😔\nВозможно он был отправлен слишком давно")
+                return "ok"
+
+            msg_type, file_id = row
+            send_file(owner_id, msg_type, file_id)
 
     return "ok"
 
+# ---------------- START ----------------
+
 if __name__ == "__main__":
+    init_db()
     app.run(host="0.0.0.0", port=8000)
