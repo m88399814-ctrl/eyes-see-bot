@@ -92,19 +92,57 @@ def send_media(chat_id, msg_type, file_id, token):
         ]
     }
 
-    methods = {
-        "photo": ("sendPhoto", "photo"),
-        "video": ("sendVideo", "video"),
-        "video_note": ("sendVideoNote", "video_note"),
-        "voice": ("sendVoice", "voice")
-    }
+    try:
+        if msg_type == "photo":
+            r = tg("sendPhoto", {
+                "chat_id": chat_id,
+                "photo": file_id,
+                "reply_markup": hide
+            })
 
-    method, key = methods[msg_type]
-    tg(method, {
-        "chat_id": chat_id,
-        key: file_id,
-        "reply_markup": hide
-    })
+            # fallback как документ
+            if not r.ok:
+                tg("sendDocument", {
+                    "chat_id": chat_id,
+                    "document": file_id,
+                    "reply_markup": hide
+                })
+
+        elif msg_type == "video":
+            tg("sendVideo", {
+                "chat_id": chat_id,
+                "video": file_id,
+                "reply_markup": hide
+            })
+
+        elif msg_type == "voice":
+            tg("sendVoice", {
+                "chat_id": chat_id,
+                "voice": file_id,
+                "reply_markup": hide
+            })
+
+        elif msg_type == "video_note":
+            r = tg("sendVideoNote", {
+                "chat_id": chat_id,
+                "video_note": file_id
+            })
+
+            # fallback как видео
+            if not r.ok:
+                tg("sendVideo", {
+                    "chat_id": chat_id,
+                    "video": file_id,
+                    "reply_markup": hide
+                })
+
+    except Exception:
+        send_text(
+            chat_id,
+            "❌ <b>Не получилось открыть файл</b> 😔\n"
+            "Возможно, это исчезающее сообщение",
+            hide
+        )
 
 def media_from_message(msg):
     if "photo" in msg:
