@@ -64,7 +64,9 @@ def send_file(chat_id, msg_type, file_id):
         "video_note": "sendVideoNote",
         "voice": "sendVoice"
     }
+
     payload_key = "video_note" if msg_type == "video_note" else msg_type
+
     tg(methods[msg_type], {
         "chat_id": chat_id,
         payload_key: file_id
@@ -80,12 +82,14 @@ def webhook():
     if not data:
         return "ok"
 
-    # 📩 сообщение от СОБЕСЕДНИКА → сохраняем
+    # ================= СОБЕСЕДНИК НАПИСАЛ =================
     if "business_message" in data:
         msg = data["business_message"]
-        owner_id = msg["business_connection_id"]
+
+        owner_id = msg["chat"]["id"]          # ✅ ВАЖНО: ЧИСЛО
         sender = msg["from"]
 
+        # не сохраняем сообщения владельца
         if sender["id"] == owner_id:
             return "ok"
 
@@ -128,10 +132,11 @@ def webhook():
                 ))
             conn.commit()
 
-    # 🗑 удаление сообщения СОБЕСЕДНИКОМ
+    # ================= СОБЕСЕДНИК УДАЛИЛ =================
     elif "deleted_business_messages" in data:
         deleted = data["deleted_business_messages"]
-        owner_id = deleted["business_connection_id"]
+
+        owner_id = deleted["chat"]["id"]   # ✅ ЧИСЛО
 
         for mid in deleted["message_ids"]:
             with get_db() as conn:
@@ -164,7 +169,7 @@ def webhook():
             footer = f"\n\nУдалил(а): <b>{sender_name}</b>"
             send_text(owner_id, header + body + footer)
 
-    # 🔁 команда открытия файла
+    # ================= ОТКРЫТИЕ ФАЙЛА =================
     elif "message" in data:
         msg = data["message"]
         text = msg.get("text", "")
@@ -182,13 +187,14 @@ def webhook():
                     """, (token,))
                     row = cur.fetchone()
 
+            # удаляем команду
             tg("deleteMessage", {
                 "chat_id": owner_id,
                 "message_id": msg["message_id"]
             })
 
             if not row:
-                send_text(owner_id, "❌ Файл недоступен (возможно прошло больше 18 часов)")
+                send_text(owner_id, "❌ Файл недоступен 😔\nВозможно прошло больше 18 часов")
                 return "ok"
 
             msg_type, file_id = row
