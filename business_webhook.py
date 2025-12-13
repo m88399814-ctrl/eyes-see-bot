@@ -17,14 +17,12 @@ def get_db():
 def init_db():
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("DROP TABLE IF EXISTS messages;")
             cur.execute("""
-            CREATE TABLE messages (
+            CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
                 owner_id BIGINT NOT NULL,
                 sender_id BIGINT NOT NULL,
                 sender_name TEXT,
-                chat_id BIGINT NOT NULL,
                 message_id BIGINT NOT NULL,
                 msg_type TEXT NOT NULL,
                 text TEXT,
@@ -58,16 +56,15 @@ def send_text(chat_id, text):
     })
 
 def send_file(chat_id, msg_type, file_id):
-    methods = {
+    method_map = {
         "photo": "sendPhoto",
         "video": "sendVideo",
         "video_note": "sendVideoNote",
         "voice": "sendVoice"
     }
-
     payload_key = "video_note" if msg_type == "video_note" else msg_type
 
-    tg(methods[msg_type], {
+    tg(method_map[msg_type], {
         "chat_id": chat_id,
         payload_key: file_id
     })
@@ -82,11 +79,14 @@ def webhook():
     if not data:
         return "ok"
 
-    # ================= СОБЕСЕДНИК НАПИСАЛ =================
-    if "business_message" in data:
-        msg = data["business_message"]
+    # 🔑 ВЛАДЕЛЕЦ BUSINESS
+    owner_id = None
+    if "business_connection" in data:
+        owner_id = data["business_connection"]["user"]["id"]
 
-        owner_id = msg["chat"]["id"]          # ✅ ВАЖНО: ЧИСЛО
+    # 📩 СООБЩЕНИЕ ОТ СОБЕСЕДНИКА → СОХРАНЯЕМ
+    if "business_message" in data and owner_id:
+        msg = data["business_message"]
         sender = msg["from"]
 
         # не сохраняем сообщения владельца
@@ -110,20 +110,19 @@ def webhook():
             msg_type = "voice"
             file_id = msg["voice"]["file_id"]
 
-        token = uuid.uuid4().hex[:8]
+        token = uuid.uuid4().hex[:10]
 
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                 INSERT INTO messages
-                (owner_id, sender_id, sender_name, chat_id, message_id,
+                (owner_id, sender_id, sender_name, message_id,
                  msg_type, text, file_id, token)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                 """, (
                     owner_id,
                     sender["id"],
                     sender.get("first_name", "Без имени"),
-                    msg["chat"]["id"],
                     msg["message_id"],
                     msg_type,
                     text,
@@ -132,11 +131,9 @@ def webhook():
                 ))
             conn.commit()
 
-    # ================= СОБЕСЕДНИК УДАЛИЛ =================
-    elif "deleted_business_messages" in data:
+    # 🗑 УДАЛЕНИЕ СООБЩЕНИЯ
+    elif "deleted_business_messages" in data and owner_id:
         deleted = data["deleted_business_messages"]
-
-        owner_id = deleted["chat"]["id"]   # ✅ ЧИСЛО
 
         for mid in deleted["message_ids"]:
             with get_db() as conn:
@@ -144,8 +141,8 @@ def webhook():
                     cur.execute("""
                     SELECT msg_type, text, file_id, sender_name, token
                     FROM messages
-                    WHERE message_id = %s
-                    """, (mid,))
+                    WHERE message_id = %s AND owner_id = %s
+                    """, (mid, owner_id))
                     row = cur.fetchone()
 
             if not row:
@@ -153,13 +150,13 @@ def webhook():
 
             msg_type, text, file_id, sender_name, token = row
 
-            header = "🗑 <b>Удалённое сообщение</b>\n\n"
+            header = "🗑 <b>Новое удалённое сообщение</b>\n\n"
 
             if msg_type == "text":
                 body = f"<blockquote>{text}</blockquote>"
             else:
                 labels = {
-                    "photo": "📷 Фото",
+                    "photo": "📷 Фотография",
                     "video": "📹 Видео",
                     "video_note": "📹 Видеосообщение",
                     "voice": "🎤 Голосовое сообщение"
@@ -169,36 +166,36 @@ def webhook():
             footer = f"\n\nУдалил(а): <b>{sender_name}</b>"
             send_text(owner_id, header + body + footer)
 
-    # ================= ОТКРЫТИЕ ФАЙЛА =================
+    # 🔁 ОТКРЫТИЕ ФАЙЛА
     elif "message" in data:
         msg = data["message"]
         text = msg.get("text", "")
+        chat_id = msg["chat"]["id"]
 
         if text.startswith("/get_"):
             token = text.replace("/get_", "")
-            owner_id = msg["chat"]["id"]
 
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
                     SELECT msg_type, file_id
                     FROM messages
-                    WHERE token = %s
-                    """, (token,))
+                    WHERE token = %s AND owner_id = %s
+                    """, (token, chat_id))
                     row = cur.fetchone()
 
-            # удаляем команду
+            # удалить команду
             tg("deleteMessage", {
-                "chat_id": owner_id,
+                "chat_id": chat_id,
                 "message_id": msg["message_id"]
             })
 
             if not row:
-                send_text(owner_id, "❌ Файл недоступен 😔\nВозможно прошло больше 18 часов")
+                send_text(chat_id, "❌ Не получилось открыть файл 😔\nВозможно он был отправлен слишком давно")
                 return "ok"
 
             msg_type, file_id = row
-            send_file(owner_id, msg_type, file_id)
+            send_file(chat_id, msg_type, file_id)
 
     return "ok"
 
