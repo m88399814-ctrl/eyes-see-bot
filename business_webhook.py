@@ -7,7 +7,7 @@ from flask import Flask, request
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
-BOT_USERNAME = "EyesSeeBot"  # username бота БЕЗ @
+BOT_USERNAME = "EyesSeeBot"  # без @
 
 app = Flask(__name__)
 
@@ -24,7 +24,6 @@ def init_db():
                 owner_id BIGINT PRIMARY KEY
             )
             """)
-
             cur.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
@@ -35,7 +34,7 @@ def init_db():
                 msg_type TEXT NOT NULL,
                 text TEXT,
                 file_id TEXT,
-                token TEXT UNIQUE,
+                token TEXT,
                 created_at TIMESTAMP DEFAULT NOW()
             )
             """)
@@ -63,8 +62,8 @@ def get_owner():
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT owner_id FROM owners LIMIT 1")
-            row = cur.fetchone()
-            return row[0] if row else None
+            r = cur.fetchone()
+            return r[0] if r else None
 
 # ================= TG API =================
 
@@ -76,18 +75,18 @@ def tg(method, payload):
     )
 
 def send_text(chat_id, text, markup=None):
-    payload = {
+    data = {
         "chat_id": chat_id,
         "text": text,
         "parse_mode": "HTML",
-        "disable_web_page_preview": True  # 🔥 ВАЖНО — УБИРАЕТ ПРЕВЬЮ
+        "disable_web_page_preview": True
     }
     if markup:
-        payload["reply_markup"] = markup
-    tg("sendMessage", payload)
+        data["reply_markup"] = markup
+    tg("sendMessage", data)
 
 def send_media(chat_id, msg_type, file_id, token):
-    hide_markup = {
+    hide = {
         "inline_keyboard": [
             [{"text": "✖️ Скрыть", "callback_data": f"hide:{token}"}]
         ]
@@ -104,7 +103,7 @@ def send_media(chat_id, msg_type, file_id, token):
     tg(method, {
         "chat_id": chat_id,
         key: file_id,
-        "reply_markup": hide_markup
+        "reply_markup": hide
     })
 
 # ================= WEBHOOK =================
@@ -117,17 +116,16 @@ def webhook():
     if not data:
         return "ok"
 
-    # 1️⃣ подключение бизнес-бота
+    # 1) бизнес подключение
     if "business_connection" in data:
-        owner_id = data["business_connection"]["user"]["id"]
-        save_owner(owner_id)
+        save_owner(data["business_connection"]["user"]["id"])
         return "ok"
 
     owner_id = get_owner()
     if not owner_id:
         return "ok"
 
-    # 2️⃣ сохраняем ТОЛЬКО сообщения собеседника
+    # 2) сохраняем сообщения собеседника
     if "business_message" in data:
         msg = data["business_message"]
         sender = msg["from"]
@@ -173,12 +171,15 @@ def webhook():
                 ))
         return "ok"
 
-    # 3️⃣ удаление сообщений → уведомление (1 сек кд)
+    # 3) удаление сообщений (группировка 1 сек)
     if "deleted_business_messages" in data:
-        deleted = data["deleted_business_messages"]
         time.sleep(1)
 
-        for mid in deleted.get("message_ids", []):
+        blocks = []
+        sender_id = None
+        sender_name = None
+
+        for mid in data["deleted_business_messages"].get("message_ids", []):
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
@@ -186,40 +187,47 @@ def webhook():
                     FROM messages
                     WHERE owner_id = %s AND message_id = %s
                     """, (owner_id, mid))
-                    row = cur.fetchone()
+                    r = cur.fetchone()
 
-            if not row:
+            if not r:
                 continue
 
-            msg_type, text, file_id, sender_name, sender_id, token = row
-
-            header = "🗑 <b>Новое удалённое сообщение</b>\n\n"
-            who = f"\n\nУдалил(а): <b>{sender_name}</b>"
+            msg_type, text, file_id, sender_name, sender_id, token = r
 
             if msg_type == "text":
-                send_text(owner_id, header + f"<blockquote>{text}</blockquote>" + who)
-                continue
+                blocks.append(f"<blockquote>{text}</blockquote>")
+            else:
+                label = {
+                    "photo": "📷 Фото",
+                    "video": "🎥 Видео",
+                    "video_note": "🎥 Видеосообщение",
+                    "voice": "🎤 Голосовое сообщение"
+                }[msg_type]
 
-            labels = {
-                "photo": "📷 Фото",
-                "video": "🎥 Видео",
-                "video_note": "🎥 Видеосообщение",
-                "voice": "🎤 Голосовое сообщение"
-            }
+                link = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label}</a>'
+                blocks.append(link)
 
-            label = labels[msg_type]
-            link = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label}</a>'
-            send_text(owner_id, header + link + who)
-
+        if blocks:
+            who = f'\n\nУдалил(а): <a href="tg://user?id={sender_id}">{sender_name}</a>'
+            send_text(
+                owner_id,
+                "🗑 <b>Новое удалённое сообщение</b>\n\n" +
+                "\n".join(blocks) + who
+            )
         return "ok"
 
-    # 4️⃣ /start TOKEN → открыть файл (команда НЕ ВИДНА)
+    # 4) /start TOKEN → открыть файл
     if "message" in data:
         msg = data["message"]
         text = msg.get("text", "")
         chat_id = msg["chat"]["id"]
 
         if text.startswith("/start "):
+            tg("deleteMessage", {
+                "chat_id": chat_id,
+                "message_id": msg["message_id"]
+            })
+
             token = text.split(" ", 1)[1]
 
             with get_db() as conn:
@@ -229,27 +237,25 @@ def webhook():
                     FROM messages
                     WHERE owner_id = %s AND token = %s
                     """, (chat_id, token))
-                    row = cur.fetchone()
+                    r = cur.fetchone()
 
-            if not row:
-                hide = {
-                    "inline_keyboard": [
-                        [{"text": "✖️ Скрыть", "callback_data": "hide:error"}]
-                    ]
-                }
+            if not r:
                 send_text(
                     chat_id,
                     "❌ <b>Не получилось открыть файл</b> 😔\n"
                     "Возможно он был отправлен слишком давно",
-                    hide
+                    {
+                        "inline_keyboard": [
+                            [{"text": "✖️ Скрыть", "callback_data": "hide:error"}]
+                        ]
+                    }
                 )
                 return "ok"
 
-            msg_type, file_id = row
-            send_media(chat_id, msg_type, file_id, token)
+            send_media(chat_id, r[0], r[1], token)
             return "ok"
 
-    # 5️⃣ кнопка Скрыть
+    # 5) кнопка Скрыть
     if "callback_query" in data:
         cq = data["callback_query"]
         msg = cq.get("message")
