@@ -174,42 +174,43 @@ def webhook():
     if not owner_id:
         return "ok"
 
-    # 2) business_message
-    if "business_message" in data:
-        msg = data["business_message"]
-        sender = msg["from"]
+    if sender["id"] == owner_id and "reply_to_message" in msg:
+        replied = msg["reply_to_message"]
 
-        # 🔐 ИСЧЕЗАЮЩИЕ СООБЩЕНИЯ (reply от владельца — как Catcher)
-        if sender["id"] == owner_id and "reply_to_message" in msg:
-            replied = msg["reply_to_message"]
-
-            msg_type, file_id = media_from_message(replied)
-            if not msg_type:
-                return "ok"
-
-            labels = {
-                "photo": "📷 Фотография",
-                "video": "🎥 Видео",
-                "video_note": "🎥 Видеосообщение",
-                "voice": "🎤 Голосовое сообщение"
-            }
-
-            header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
-            body = labels[msg_type]
-            who = (
-                f'\n\nОтправил(а): '
-                f'<a href="tg://user?id={replied["from"]["id"]}">'
-                f'{replied["from"].get("first_name","")}</a>'
-            )
-
-            tg("sendMessage", {
-                "chat_id": owner_id,
-                "text": header + body + who,
-                "parse_mode": "HTML",
-                "reply_to_message_id": replied["message_id"]
-            })
-
+        msg_type, file_id = media_from_message(replied)
+        if not msg_type:
             return "ok"
+
+        labels = {
+            "photo": "📷 Фотография",
+            "video": "🎥 Видео",
+            "video_note": "🎥 Видеосообщение",
+            "voice": "🎤 Голосовое сообщение"
+        }
+
+        header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
+        body = labels[msg_type]
+        who = (
+            f'\n\nОтправил(а): '
+            f'<a href="tg://user?id={replied["from"]["id"]}">'
+            f'{replied["from"].get("first_name","")}</a>'
+        )
+
+    # 1️⃣ уведомление (как у Catcher)
+        tg("sendMessage", {
+            "chat_id": owner_id,
+            "text": header + body + who,
+            "parse_mode": "HTML",
+            "reply_to_message_id": replied["message_id"]
+        })
+
+    # 2️⃣ ПЫТАЕМСЯ отправить файл (КЛЮЧЕВО)
+        try:
+            send_media(owner_id, msg_type, file_id, "ephemeral")
+        except:
+            pass
+
+        return "ok"
 
         # ❌ сообщения владельца НЕ сохраняем
         if sender["id"] == owner_id:
