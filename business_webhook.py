@@ -1,15 +1,12 @@
 from flask import Flask, request
 import requests
 import sqlite3
-import time
 import json
-
-BOT_TOKEN = "7557240631:AAFy8O4D-KMkwdlAI-QtV7AtVJ0hhdXgh90"
-DB_NAME = "eyessee.db"
 
 app = Flask(__name__)
 
-OWNER_ID = None  # владелец бизнес-аккаунта
+DB_NAME = "eyessee.db"
+OWNER_ID = None
 
 
 # ---------- DB ----------
@@ -20,10 +17,9 @@ def get_db():
 def init_db():
     conn = get_db()
     cur = conn.cursor()
-
     cur.execute("""
         CREATE TABLE IF NOT EXISTS messages (
-            message_id INTEGER,
+            message_id INTEGER PRIMARY KEY,
             chat_id INTEGER,
             sender_id INTEGER,
             sender_name TEXT,
@@ -33,7 +29,6 @@ def init_db():
             date INTEGER
         )
     """)
-
     conn.commit()
     conn.close()
 
@@ -41,16 +36,22 @@ def init_db():
 # ---------- SEND ----------
 def send_to_owner(text):
     if not OWNER_ID:
-        print("❌ OWNER_ID не установлен")
         return
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    token = get_token()
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
         "chat_id": OWNER_ID,
         "text": text,
-        "parse_mode": "HTML"
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True
     }
     requests.post(url, json=payload)
+
+
+def get_token():
+    import os
+    return os.getenv("BOT_TOKEN")
 
 
 # ---------- WEBHOOK ----------
@@ -72,12 +73,9 @@ def webhook():
         print(f"✅ OWNER CONNECTED: {OWNER_ID}")
         return "ok"
 
-    # 📩 новое сообщение — СОХРАНЯЕМ
+    # 📩 новое сообщение — сохраняем
     if "business_message" in data:
         msg = data["business_message"]
-
-        conn = get_db()
-        cur = conn.cursor()
 
         msg_type = "text"
         content = msg.get("text")
@@ -93,100 +91,96 @@ def webhook():
             msg_type = "video"
             file_id = msg["video"]["file_id"]
 
+        conn = get_db()
+        cur = conn.cursor()
         cur.execute("""
-            INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO messages
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             msg["message_id"],
             msg["chat"]["id"],
             msg["from"]["id"],
-            msg["from"].get("first_name", ""),
+            msg["from"].get("first_name", "Без имени"),
             msg_type,
             content,
             file_id,
             msg["date"]
         ))
-
         conn.commit()
         conn.close()
         return "ok"
 
-    # 🗑 удаление
+    # 🗑 удалённые сообщения
     if "deleted_business_messages" in data:
         ids = data["deleted_business_messages"]["message_ids"]
 
         conn = get_db()
         cur = conn.cursor()
-
-        cur.execute("""
-            SELECT sender_name, type, content FROM messages
-            WHERE message_id IN ({})
-        """.format(",".join("?" * len(ids))), ids)
-
+        cur.execute(
+            f"SELECT sender_id, sender_name, type, content FROM messages WHERE message_id IN ({','.join('?'*len(ids))})",
+            ids
+        )
         rows = cur.fetchall()
         conn.close()
 
         if not rows:
             return "ok"
 
-        if len(rows) == 1:
-            sender, mtype, content = rows[0]
-            text = "🗑 <b>Новое удалённое сообщение</b>\n\n"
+        sender_id, sender_name, mtype, content = rows[0]
+        sender_link = f'<a href="tg://user?id={sender_id}">{sender_name}</a>'
 
+        if len(rows) == 1:
+            text = "🗑 <b>Новое удалённое сообщение</b>\n\n"
             if mtype == "text":
-                text += f"«{content}»\n\n"
+                text += f"<blockquote>{content}</blockquote>\n\n"
             elif mtype == "photo":
                 text += "📷 Фотография\n\n"
             elif mtype == "voice":
                 text += "🎤 Голосовое сообщение\n\n"
             elif mtype == "video":
                 text += "📹 Видеосообщение\n\n"
-
-            text += f"Удалил(а): {sender}"
-
+            text += f"Удалил(а): {sender_link}"
         else:
             text = "🗑 <b>Новые удалённые сообщения</b>\n\n"
-            for sender, mtype, content in rows:
-                if mtype == "text":
-                    text += f"«{content}»\n"
+            for _, _, t, c in rows:
+                if t == "text":
+                    text += f"<blockquote>{c}</blockquote>\n"
                 else:
-                    text += f"[{mtype}]\n"
-
-            text += f"\nУдалил(а): {rows[0][0]}"
+                    text += f"[{t}]\n"
+            text += f"\nУдалил(а): {sender_link}"
 
         send_to_owner(text)
         return "ok"
 
-    # ✏️ редактирование
+    # ✏️ изменённое сообщение
     if "edited_business_message" in data:
         msg = data["edited_business_message"]
 
-        old = None
         conn = get_db()
         cur = conn.cursor()
-
-        cur.execute("""
-            SELECT content FROM messages WHERE message_id=?
-        """, (msg["message_id"],))
+        cur.execute("SELECT content FROM messages WHERE message_id=?", (msg["message_id"],))
         row = cur.fetchone()
 
         if row:
-            old = row[0]
-            cur.execute("""
-                UPDATE messages SET content=? WHERE message_id=?
-            """, (msg.get("text"), msg["message_id"]))
+            old_text = row[0]
+            new_text = msg.get("text")
+            cur.execute("UPDATE messages SET content=? WHERE message_id=?", (new_text, msg["message_id"]))
             conn.commit()
 
-        conn.close()
+            sender = msg["from"]
+            sender_link = f'<a href="tg://user?id={sender["id"]}">{sender.get("first_name")}</a>'
 
-        if old:
             text = (
                 "✏️ <b>Новое изменённое сообщение</b>\n\n"
-                f"<b>Старый текст:</b>\n{old}\n\n"
-                f"<b>Новый текст:</b>\n{msg.get('text')}\n\n"
-                f"Изменил(а): {msg['from'].get('first_name')}"
+                "<b>Старый текст:</b>\n"
+                f"<blockquote>{old_text}</blockquote>\n\n"
+                "<b>Новый текст:</b>\n"
+                f"<blockquote>{new_text}</blockquote>\n\n"
+                f"Изменил(а): {sender_link}"
             )
             send_to_owner(text)
 
+        conn.close()
         return "ok"
 
     return "ok"
