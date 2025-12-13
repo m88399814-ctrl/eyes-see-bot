@@ -7,15 +7,14 @@ import secrets
 import os
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_USERNAME = "EyesSeeBot"   # ⚠️ username бота БЕЗ @
 DB_NAME = "eyessee.db"
 
 app = Flask(__name__)
 OWNER_ID = None
 
-TOKEN_LIFETIME = 60  # секунд
 
-
-# ---------- DB ----------
+# ===================== DB =====================
 def get_db():
     return sqlite3.connect(DB_NAME)
 
@@ -39,10 +38,10 @@ def init_db():
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS file_tokens (
-            token TEXT PRIMARY KEY,
+            token TEXT,
             file_id TEXT,
             type TEXT,
-            expires_at INTEGER
+            created_at INTEGER
         )
     """)
 
@@ -50,43 +49,33 @@ def init_db():
     conn.close()
 
 
-# ---------- TOKENS ----------
-def create_file_token(file_id, ftype):
+# ===================== TOKENS =====================
+def create_token(file_id, ftype):
     token = secrets.token_hex(4)
-    expires = int(time.time()) + TOKEN_LIFETIME
-
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO file_tokens VALUES (?, ?, ?, ?)",
-        (token, file_id, ftype, expires)
+        (token, file_id, ftype, int(time.time()))
     )
     conn.commit()
     conn.close()
-
     return token
 
 
-def get_file_by_token(token):
-    now = int(time.time())
+def get_file(token):
     conn = get_db()
     cur = conn.cursor()
-
-    cur.execute("""
-        SELECT file_id, type FROM file_tokens
-        WHERE token=? AND expires_at>=?
-    """, (token, now))
+    cur.execute(
+        "SELECT file_id, type FROM file_tokens WHERE token=?",
+        (token,)
+    )
     row = cur.fetchone()
-
-    if row:
-        cur.execute("DELETE FROM file_tokens WHERE token=?", (token,))
-        conn.commit()
-
     conn.close()
     return row
 
 
-# ---------- SEND ----------
+# ===================== SEND =====================
 def send_to_owner(text):
     if not OWNER_ID:
         return
@@ -101,7 +90,7 @@ def send_to_owner(text):
     requests.post(url, json=payload)
 
 
-# ---------- WEBHOOK ----------
+# ===================== WEBHOOK =====================
 @app.route("/webhook", methods=["POST"])
 def webhook():
     global OWNER_ID
@@ -162,15 +151,18 @@ def webhook():
         conn.close()
         return "ok"
 
-    # 🗑 удаление
+    # 🗑 удалённые сообщения
     if "deleted_business_messages" in data:
         ids = data["deleted_business_messages"]["message_ids"]
 
         conn = get_db()
         cur = conn.cursor()
         cur.execute(
-            f"SELECT sender_id, sender_name, type, content, file_id FROM messages "
-            f"WHERE message_id IN ({','.join('?'*len(ids))})",
+            f"""
+            SELECT sender_id, sender_name, type, content, file_id
+            FROM messages
+            WHERE message_id IN ({','.join('?'*len(ids))})
+            """,
             ids
         )
         rows = cur.fetchall()
@@ -188,26 +180,31 @@ def webhook():
             if mtype == "text":
                 text += f"<blockquote>{content}</blockquote>\n\n"
             else:
-                token = create_file_token(file_id, mtype)
+                token = create_token(file_id, mtype)
                 label = {
                     "photo": "📷 Фотография",
                     "voice": "🎤 Голосовое сообщение",
                     "video_note": "📹 Видеосообщение"
                 }[mtype]
-                text += f"{label}\n/get_{token}\n\n"
+
+                link = (
+                    f'<a href="tg://resolve?domain={BOT_USERNAME}&text=/get_{token}">'
+                    f'{label}</a>'
+                )
+                text += f"{link}\n\n"
 
         text += f"Удалил(а): {sender_link}"
         send_to_owner(text)
         return "ok"
 
-    # 📥 клик по /get_xxx
+    # 📥 клик по файлу
     if "message" in data:
         msg = data["message"]
         txt = msg.get("text", "")
 
         if txt.startswith("/get_"):
             token = txt.replace("/get_", "")
-            result = get_file_by_token(token)
+            result = get_file(token)
 
             if not result:
                 send_to_owner(
@@ -219,15 +216,25 @@ def webhook():
             file_id, ftype = result
             base = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-            if ftype == "photo":
-                requests.post(f"{base}/sendPhoto",
-                              json={"chat_id": OWNER_ID, "photo": file_id})
-            elif ftype == "voice":
-                requests.post(f"{base}/sendVoice",
-                              json={"chat_id": OWNER_ID, "voice": file_id})
-            elif ftype == "video_note":
-                requests.post(f"{base}/sendVideoNote",
-                              json={"chat_id": OWNER_ID, "video_note": file_id})
+            try:
+                if ftype == "photo":
+                    r = requests.post(f"{base}/sendPhoto",
+                                      json={"chat_id": OWNER_ID, "photo": file_id})
+                elif ftype == "voice":
+                    r = requests.post(f"{base}/sendVoice",
+                                      json={"chat_id": OWNER_ID, "voice": file_id})
+                elif ftype == "video_note":
+                    r = requests.post(f"{base}/sendVideoNote",
+                                      json={"chat_id": OWNER_ID, "video_note": file_id})
+
+                if r.status_code != 200:
+                    raise Exception("Telegram error")
+
+            except Exception:
+                send_to_owner(
+                    "❌ Не получилось открыть файл 😔\n"
+                    "Возможно он был отправлен слишком давно"
+                )
 
         return "ok"
 
