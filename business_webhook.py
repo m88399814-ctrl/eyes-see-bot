@@ -197,9 +197,6 @@ def webhook():
     
                 send_text(owner_id, header + body + who)
     
-                # сразу отправляем файл
-                send_media(owner_id, msg_type, file_id, token)
-    
                 return "ok"
         if sender["id"] == owner_id:
             return "ok"
