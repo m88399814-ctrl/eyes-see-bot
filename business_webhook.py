@@ -17,6 +17,14 @@ def db():
 def init_db():
     with db() as conn:
         with conn.cursor() as cur:
+            # владелец бизнес-аккаунта
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS owners (
+                owner_id BIGINT PRIMARY KEY
+            )
+            """)
+
+            # сообщения собеседников
             cur.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
@@ -42,6 +50,13 @@ def cleanup_old():
             WHERE created_at < NOW() - INTERVAL '18 hours'
             """)
         conn.commit()
+
+def get_owner():
+    with db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT owner_id FROM owners LIMIT 1")
+            row = cur.fetchone()
+            return row[0] if row else None
 
 # ================= TELEGRAM API =================
 
@@ -79,18 +94,26 @@ def webhook():
     if not data:
         return "ok"
 
-    # 🔑 ВЛАДЕЛЕЦ БИЗНЕС-АККАУНТА (ГЛАВНОЕ!)
-    owner_id = None
+    # 🔐 фиксируем владельца бизнес-аккаунта ОДИН РАЗ
     if "business_connection" in data:
         owner_id = data["business_connection"]["user"]["id"]
+        with db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO owners (owner_id) VALUES (%s) ON CONFLICT DO NOTHING",
+                    (owner_id,)
+                )
+            conn.commit()
+        return "ok"
+
+    owner_id = get_owner()
+    if not owner_id:
+        return "ok"
 
     # ================= СООБЩЕНИЕ ОТ СОБЕСЕДНИКА =================
     if "business_message" in data:
         msg = data["business_message"]
         sender = msg["from"]
-
-        if not owner_id:
-            return "ok"
 
         # ❌ не сохраняем сообщения владельца
         if sender["id"] == owner_id:
@@ -135,12 +158,9 @@ def webhook():
                 ))
             conn.commit()
 
-    # ================= УДАЛЕНИЕ СООБЩЕНИЯ =================
+    # ================= УДАЛЕНИЕ СООБЩЕНИЯ СОБЕСЕДНИКОМ =================
     elif "deleted_business_messages" in data:
         deleted = data["deleted_business_messages"]
-
-        if not owner_id:
-            return "ok"
 
         for mid in deleted["message_ids"]:
             with db() as conn:
@@ -171,7 +191,6 @@ def webhook():
                 body = f"{labels[msg_type]}\n/get_{token}"
 
             footer = f"\n\nУдалил(а): <a href=\"tg://user?id={owner_id}\">{sender_name}</a>"
-
             send_text(owner_id, header + body + footer)
 
     # ================= ОТКРЫТИЕ ФАЙЛА =================
