@@ -270,14 +270,11 @@ def webhook():
         save_owner(data["business_connection"]["user"]["id"])
         return "ok"
 
-    owner_id = get_owner()
-    if not owner_id:
-        return "ok"
-
     # 2) business_message
     if "business_message" in data:
         msg = data["business_message"]
         sender = msg.get("from", {})
+        owner_id = msg["chat"]["id"]
 
         # 2.1) Исчезающее: владелец ответил (reply) на сообщение
         if sender.get("id") == owner_id and "reply_to_message" in msg:
@@ -365,6 +362,7 @@ def webhook():
 
     # 3) удаление сообщений (группировка 1 сек)
     if "deleted_business_messages" in data:
+        owner_id = data["deleted_business_messages"]["chat"]["id"]  # 🔑 ВАЖНО
         time.sleep(1)
 
         blocks = []
@@ -411,7 +409,9 @@ def webhook():
 
     # 4) /start TOKEN → открыть файл
     if "message" in data:
+        
         msg = data["message"]
+        owner_id = msg["from"]["id"]
         text = msg.get("text", "")
         chat_id = msg["chat"]["id"]
 
