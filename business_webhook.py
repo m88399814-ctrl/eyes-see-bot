@@ -7,7 +7,7 @@ from flask import Flask, request
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
-BOT_USERNAME = "EyesSeeBot"  # username бота без @
+BOT_USERNAME = "EyesSeeBot"  # username бота БЕЗ @
 
 app = Flask(__name__)
 
@@ -19,9 +19,15 @@ def get_db():
 def init_db():
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("DROP TABLE IF EXISTS messages;")
+
             cur.execute("""
-            CREATE TABLE messages (
+            CREATE TABLE IF NOT EXISTS owners (
+                owner_id BIGINT PRIMARY KEY
+            )
+            """)
+
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
                 owner_id BIGINT NOT NULL,
                 sender_id BIGINT NOT NULL,
@@ -121,7 +127,7 @@ def webhook():
     if not owner_id:
         return "ok"
 
-    # 2️⃣ сохраняем сообщения ТОЛЬКО собеседника
+    # 2️⃣ сохраняем ТОЛЬКО сообщения собеседника
     if "business_message" in data:
         msg = data["business_message"]
         sender = msg["from"]
@@ -167,10 +173,10 @@ def webhook():
                 ))
         return "ok"
 
-    # 3️⃣ удаление сообщений → уведомление
+    # 3️⃣ удаление сообщений (1 сек кд)
     if "deleted_business_messages" in data:
         deleted = data["deleted_business_messages"]
-        time.sleep(1)  # группировка 1 сек
+        time.sleep(1)
 
         for mid in deleted.get("message_ids", []):
             with get_db() as conn:
@@ -191,8 +197,7 @@ def webhook():
             who = f"\n\nУдалил(а): <a href=\"tg://user?id={sender_id}\">{sender_name}</a>"
 
             if msg_type == "text":
-                body = f"<blockquote>{text}</blockquote>"
-                send_text(owner_id, header + body + who)
+                send_text(owner_id, header + f"<blockquote>{text}</blockquote>" + who)
                 continue
 
             labels = {
