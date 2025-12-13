@@ -19,6 +19,14 @@ def get_db():
 def init_db():
     with get_db() as conn:
         with conn.cursor() as cur:
+            # Таблица владельцев (для нескольких бизнес-подключений)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS owners (
+                business_connection_id TEXT PRIMARY KEY,
+                owner_id BIGINT NOT NULL
+            )
+            """)
+            # Таблица сообщений
             cur.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
@@ -43,6 +51,29 @@ def cleanup_old():
             WHERE created_at < NOW() - INTERVAL '18 hours'
             """)
         conn.commit()
+
+def save_owner(bc_id: str, owner_id: int):
+    # Сохранить ID владельца для данного бизнес-подключения
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            INSERT INTO owners (business_connection_id, owner_id)
+            VALUES (%s, %s)
+            ON CONFLICT (business_connection_id)
+            DO UPDATE SET owner_id = EXCLUDED.owner_id
+            """, (bc_id, owner_id))
+        conn.commit()
+
+def get_owner(bc_id: str):
+    # Получить ID владельца по идентификатору бизнес-подключения
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT owner_id FROM owners
+            WHERE business_connection_id = %s
+            """, (bc_id,))
+            r = cur.fetchone()
+            return r[0] if r else None
 
 # ================= TG API =================
 
@@ -102,7 +133,7 @@ def send_media(chat_id, msg_type, file_id, token):
                     raise Exception("Video note send failed")
             return
 
-        # document или неизвестный тип
+        # документ или неизвестный тип
         r = tg("sendDocument", {"chat_id": chat_id, "document": file_id, "reply_markup": hide})
         if not r.ok:
             raise Exception("Document send failed")
@@ -115,14 +146,12 @@ def send_media(chat_id, msg_type, file_id, token):
                       "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
                       hide)
             return
-
         data = resp.json()
         if not data.get("ok") or "result" not in data:
             send_text(chat_id,
                       "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
                       hide)
             return
-
         file_path = data["result"].get("file_path")
         if not file_path:
             send_text(chat_id,
@@ -131,7 +160,6 @@ def send_media(chat_id, msg_type, file_id, token):
             return
 
         file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
-
         # Отправляем по URL в зависимости от типа:
         if msg_type == "photo":
             r3 = tg("sendPhoto", {"chat_id": chat_id, "photo": file_url, "reply_markup": hide})
@@ -169,20 +197,19 @@ def send_media(chat_id, msg_type, file_id, token):
             return
 
         if msg_type == "document":
+            # Если документ – пытаемся определить, не фото или видео ли это по расширению
             ext = ""
             if "." in file_path:
                 ext = file_path.split(".")[-1].lower()
-
             if ext in ("jpg", "jpeg", "png", "gif", "webp"):
                 r3 = tg("sendPhoto", {"chat_id": chat_id, "photo": file_url, "reply_markup": hide})
                 if r3.ok:
                     return
-
             if ext in ("mp4", "mov", "webm"):
                 r3 = tg("sendVideo", {"chat_id": chat_id, "video": file_url, "reply_markup": hide})
                 if r3.ok:
                     return
-
+            # Иначе отправляем как документ
             r3 = tg("sendDocument", {"chat_id": chat_id, "document": file_url, "reply_markup": hide})
             if not r3.ok:
                 send_text(chat_id,
@@ -190,6 +217,7 @@ def send_media(chat_id, msg_type, file_id, token):
                           hide)
             return
 
+        # На всякий случай для прочих типов – отправляем как документ по URL
         r3 = tg("sendDocument", {"chat_id": chat_id, "document": file_url, "reply_markup": hide})
         if not r3.ok:
             send_text(chat_id,
@@ -219,7 +247,7 @@ def media_from_message(m):
         fid = m["document"].get("file_id")
         mime = (m["document"].get("mime_type") or "").lower()
         if mime.startswith("image/"):
-            return "photo", fid  # пробуем как photo (fallback внутри send_media есть)
+            return "photo", fid  # попробуем как photo (fallback внутри send_media есть)
         return "document", fid
 
     # 6) animation (редко)
@@ -247,21 +275,26 @@ def webhook():
     if not data:
         return "ok"
 
-    # 0) business_connection можно просто игнорировать (нам больше не нужен owners)
+    # 1) подключение бизнес-аккаунта
     if "business_connection" in data:
+        bc = data["business_connection"]
+        bc_id = bc.get("id") or bc.get("business_connection_id")
+        owner_id = bc["user"]["id"]
+        if bc_id:
+            save_owner(bc_id, owner_id)
         return "ok"
 
-    # 1) business_message
+    # 2) входящее сообщение
     if "business_message" in data:
         msg = data["business_message"]
-        sender = msg.get("from", {})
-
-        # 🔑 ВАЖНО: владелец = chat.id этого business_message
-        owner_id = msg.get("chat", {}).get("id")
+        bc_id = msg.get("business_connection_id")
+        owner_id = get_owner(bc_id)
         if not owner_id:
             return "ok"
 
-        # 1.1) Исчезающее: владелец ответил (reply) на сообщение
+        sender = msg.get("from", {})
+
+        # 2.1) Исчезающее: владелец ответил (reply) на сообщение
         if sender.get("id") == owner_id and "reply_to_message" in msg:
             replied = msg["reply_to_message"]
 
@@ -279,6 +312,7 @@ def webhook():
 
             token = uuid.uuid4().hex[:10]
 
+            # сохраняем
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
@@ -306,14 +340,15 @@ def webhook():
             send_text(owner_id, header + body + who)
             return "ok"
 
-        # 1.2) Сообщения владельца не сохраняем
+        # 2.2) Сообщения владельца не сохраняем
         if sender.get("id") == owner_id:
             return "ok"
 
-        # 1.3) Обычные сообщения собеседника -> сохраняем (для удалений)
+        # 2.3) Обычные сообщения собеседника -> сохраняем (для удалений)
         msg_type, file_id = media_from_message(msg)
         text = msg.get("text")
 
+        # если это не медиа и нет текста — просто игнор
         if not msg_type and not text:
             return "ok"
 
@@ -343,15 +378,13 @@ def webhook():
 
         return "ok"
 
-    # 2) deleted_business_messages (группировка 1 сек)
+    # 3) удаление сообщений (группировка 1 сек)
     if "deleted_business_messages" in data:
         dbm = data["deleted_business_messages"]
-
-        # 🔑 ВАЖНО: владелец = chat.id этого удаления
-        owner_id = dbm.get("chat", {}).get("id")
+        bc_id = dbm.get("business_connection_id")
+        owner_id = get_owner(bc_id)
         if not owner_id:
             return "ok"
-
         time.sleep(1)
 
         blocks = []
@@ -396,9 +429,10 @@ def webhook():
 
         return "ok"
 
-    # 3) /start TOKEN → открыть файл
+    # 4) /start TOKEN → открыть файл
     if "message" in data:
         msg = data["message"]
+        owner_id = msg["from"]["id"]
         text = msg.get("text", "")
         chat_id = msg["chat"]["id"]
 
@@ -410,11 +444,6 @@ def webhook():
             })
 
             token = text.split(" ", 1)[1].strip()
-
-            # 🔑 владелец здесь = кто нажал ссылку (/start)
-            owner_id = msg.get("from", {}).get("id")
-            if not owner_id:
-                return "ok"
 
             with get_db() as conn:
                 with conn.cursor() as cur:
@@ -438,7 +467,7 @@ def webhook():
             send_media(chat_id, msg_type, file_id, token)
             return "ok"
 
-    # 4) кнопка Скрыть
+    # 5) кнопка Скрыть
     if "callback_query" in data:
         cq = data["callback_query"]
         m = cq.get("message")
