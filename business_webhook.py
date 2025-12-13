@@ -19,19 +19,15 @@ def get_db():
 def init_db():
     with get_db() as conn:
         with conn.cursor() as cur:
+            cur.execute("DROP TABLE IF EXISTS messages;")
             cur.execute("""
-            CREATE TABLE IF NOT EXISTS owners (
-                owner_id BIGINT PRIMARY KEY
-            )
-            """)
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS messages (
+            CREATE TABLE messages (
                 id SERIAL PRIMARY KEY,
-                owner_id BIGINT,
-                sender_id BIGINT,
+                owner_id BIGINT NOT NULL,
+                sender_id BIGINT NOT NULL,
                 sender_name TEXT,
-                message_id BIGINT,
-                msg_type TEXT,
+                message_id BIGINT NOT NULL,
+                msg_type TEXT NOT NULL,
                 text TEXT,
                 file_id TEXT,
                 token TEXT,
