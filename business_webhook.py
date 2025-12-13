@@ -94,69 +94,126 @@ def hide_markup(token: str):
 
 def send_media(chat_id, msg_type, file_id, token):
     hide = hide_markup(token)
-
-    # ВАЖНО: Telegram может не принять некоторые file_id (особенно для self-destruct),
-    # но мы пробуем и делаем fallback
     try:
         if msg_type == "photo":
-            r = tg("sendPhoto", {
-                "chat_id": chat_id,
-                "photo": file_id,
-                "reply_markup": hide
-            })
+            r = tg("sendPhoto", {"chat_id": chat_id, "photo": file_id, "reply_markup": hide})
             if not r.ok:
-                tg("sendDocument", {
-                    "chat_id": chat_id,
-                    "document": file_id,
-                    "reply_markup": hide
-                })
+                r2 = tg("sendDocument", {"chat_id": chat_id, "document": file_id, "reply_markup": hide})
+                if not r2.ok:
+                    raise Exception("Photo send failed")
             return
 
         if msg_type == "video":
-            tg("sendVideo", {
-                "chat_id": chat_id,
-                "video": file_id,
-                "reply_markup": hide
-            })
+            r = tg("sendVideo", {"chat_id": chat_id, "video": file_id, "reply_markup": hide})
+            if not r.ok:
+                raise Exception("Video send failed")
             return
 
         if msg_type == "voice":
-            tg("sendVoice", {
-                "chat_id": chat_id,
-                "voice": file_id,
-                "reply_markup": hide
-            })
+            r = tg("sendVoice", {"chat_id": chat_id, "voice": file_id, "reply_markup": hide})
+            if not r.ok:
+                raise Exception("Voice send failed")
             return
 
         if msg_type == "video_note":
-            r = tg("sendVideoNote", {
-                "chat_id": chat_id,
-                "video_note": file_id,
-                "reply_markup": hide
-            })
-            # fallback как обычное видео
+            r = tg("sendVideoNote", {"chat_id": chat_id, "video_note": file_id, "reply_markup": hide})
             if not r.ok:
-                tg("sendVideo", {
-                    "chat_id": chat_id,
-                    "video": file_id,
-                    "reply_markup": hide
-                })
+                r2 = tg("sendVideo", {"chat_id": chat_id, "video": file_id, "reply_markup": hide})
+                if not r2.ok:
+                    raise Exception("Video note send failed")
             return
 
-        # document/unknown -> как документ
-        tg("sendDocument", {
-            "chat_id": chat_id,
-            "document": file_id,
-            "reply_markup": hide
-        })
+        # document или неизвестный тип
+        r = tg("sendDocument", {"chat_id": chat_id, "document": file_id, "reply_markup": hide})
+        if not r.ok:
+            raise Exception("Document send failed")
 
     except Exception:
-        send_text(
-            chat_id,
-            "❌ <b>Не получилось открыть файл</b> 😔\n"
-            "Возможно он уже исчез / недоступен",
-            hide
-        )
+        # Fallback: пробуем получить файл и отправить по URL
+        resp = tg("getFile", {"file_id": file_id})
+        if not resp.ok:
+            send_text(chat_id,
+                      "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                      hide)
+            return
+        data = resp.json()
+        if not data.get("ok") or "result" not in data:
+            send_text(chat_id,
+                      "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                      hide)
+            return
+        file_path = data["result"].get("file_path")
+        if not file_path:
+            send_text(chat_id,
+                      "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                      hide)
+            return
+
+        file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+        # Отправляем по URL в зависимости от типа:
+        if msg_type == "photo":
+            r3 = tg("sendPhoto", {"chat_id": chat_id, "photo": file_url, "reply_markup": hide})
+            if not r3.ok:
+                send_text(chat_id,
+                          "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                          hide)
+            return
+
+        if msg_type == "video":
+            r3 = tg("sendVideo", {"chat_id": chat_id, "video": file_url, "reply_markup": hide})
+            if not r3.ok:
+                send_text(chat_id,
+                          "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                          hide)
+            return
+
+        if msg_type == "voice":
+            r3 = tg("sendVoice", {"chat_id": chat_id, "voice": file_url, "reply_markup": hide})
+            if not r3.ok:
+                send_text(chat_id,
+                          "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                          hide)
+            return
+
+        if msg_type == "video_note":
+            # Пробуем как видеосообщение; если не выйдет – как обычное видео
+            r3 = tg("sendVideoNote", {"chat_id": chat_id, "video_note": file_url, "reply_markup": hide})
+            if not r3.ok:
+                r4 = tg("sendVideo", {"chat_id": chat_id, "video": file_url, "reply_markup": hide})
+                if not r4.ok:
+                    send_text(chat_id,
+                              "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                              hide)
+            return
+
+        if msg_type == "document":
+            # Если документ – пытаемся определить, не фото или видео ли это по расширению
+            ext = ""
+            if "." in file_path:
+                ext = file_path.split(".")[-1].lower()
+            if ext in ("jpg", "jpeg", "png", "gif", "webp"):
+                r3 = tg("sendPhoto", {"chat_id": chat_id, "photo": file_url, "reply_markup": hide})
+                if r3.ok:
+                    return
+            if ext in ("mp4", "mov", "webm"):
+                r3 = tg("sendVideo", {"chat_id": chat_id, "video": file_url, "reply_markup": hide})
+                if r3.ok:
+                    return
+            # Иначе отправляем как документ
+            r3 = tg("sendDocument", {"chat_id": chat_id, "document": file_url, "reply_markup": hide})
+            if not r3.ok:
+                send_text(chat_id,
+                          "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                          hide)
+            return
+
+        # На всякий случай для прочих типов – отправляем как документ по URL
+        r3 = tg("sendDocument", {"chat_id": chat_id, "document": file_url, "reply_markup": hide})
+        if not r3.ok:
+            send_text(chat_id,
+                      "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                      hide)
+        return
 
 def media_from_message(m):
     # 1) photo (иногда пустой список — проверяем)
