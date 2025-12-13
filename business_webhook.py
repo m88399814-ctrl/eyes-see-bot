@@ -19,7 +19,6 @@ def get_db():
 def init_db():
     with get_db() as conn:
         with conn.cursor() as cur:
-
             cur.execute("""
             CREATE TABLE IF NOT EXISTS owners (
                 owner_id BIGINT PRIMARY KEY
@@ -36,7 +35,7 @@ def init_db():
                 msg_type TEXT NOT NULL,
                 text TEXT,
                 file_id TEXT,
-                token TEXT,
+                token TEXT UNIQUE,
                 created_at TIMESTAMP DEFAULT NOW()
             )
             """)
@@ -80,7 +79,8 @@ def send_text(chat_id, text, markup=None):
     payload = {
         "chat_id": chat_id,
         "text": text,
-        "parse_mode": "HTML"
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True  # 🔥 ВАЖНО — УБИРАЕТ ПРЕВЬЮ
     }
     if markup:
         payload["reply_markup"] = markup
@@ -117,7 +117,7 @@ def webhook():
     if not data:
         return "ok"
 
-    # 1️⃣ бизнес подключение
+    # 1️⃣ подключение бизнес-бота
     if "business_connection" in data:
         owner_id = data["business_connection"]["user"]["id"]
         save_owner(owner_id)
@@ -173,7 +173,7 @@ def webhook():
                 ))
         return "ok"
 
-    # 3️⃣ удаление сообщений (1 сек кд)
+    # 3️⃣ удаление сообщений → уведомление (1 сек кд)
     if "deleted_business_messages" in data:
         deleted = data["deleted_business_messages"]
         time.sleep(1)
@@ -194,16 +194,16 @@ def webhook():
             msg_type, text, file_id, sender_name, sender_id, token = row
 
             header = "🗑 <b>Новое удалённое сообщение</b>\n\n"
-            who = f"\n\nУдалил(а): <a href=\"tg://user?id={sender_id}\">{sender_name}</a>"
+            who = f"\n\nУдалил(а): <b>{sender_name}</b>"
 
             if msg_type == "text":
                 send_text(owner_id, header + f"<blockquote>{text}</blockquote>" + who)
                 continue
 
             labels = {
-                "photo": "📷 Фотография",
-                "video": "📹 Видео",
-                "video_note": "📹 Видеосообщение",
+                "photo": "📷 Фото",
+                "video": "🎥 Видео",
+                "video_note": "🎥 Видеосообщение",
                 "voice": "🎤 Голосовое сообщение"
             }
 
@@ -213,7 +213,7 @@ def webhook():
 
         return "ok"
 
-    # 4️⃣ /start TOKEN → открыть файл
+    # 4️⃣ /start TOKEN → открыть файл (команда НЕ ВИДНА)
     if "message" in data:
         msg = data["message"]
         text = msg.get("text", "")
