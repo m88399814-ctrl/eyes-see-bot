@@ -327,10 +327,11 @@ def webhook():
                 with conn.cursor() as cur:
                     cur.execute("""
                     INSERT INTO messages
-                    (owner_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
+                    (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                     """, (
                         owner_id,
+                        msg["chat"]["id"],
                         replied.get("from", {}).get("id", 0),
                         replied.get("from", {}).get("first_name", "Без имени"),
                         replied.get("message_id", 0),
@@ -372,10 +373,11 @@ def webhook():
             with conn.cursor() as cur:
                 cur.execute("""
                 INSERT INTO messages
-                (owner_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
+                (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                 """, (
                     owner_id,
+                    msg["chat"]["id"],
                     sender.get("id", 0),
                     sender.get("first_name", "Без имени"),
                     msg.get("message_id", 0),
@@ -548,13 +550,14 @@ def webhook():
             
             with get_db() as conn:
                 with conn.cursor() as cur:
+                    chat_id = msg["chat"]["id"]
                     cur.execute("""
                     SELECT sender_name, sender_id
                     FROM messages
                     WHERE owner_id = %s
                     ORDER BY created_at DESC
                     LIMIT 1
-                    """, (owner_id,))
+                    """, (owner_id, chat_id))
                     r = cur.fetchone()
             
             if r:
