@@ -32,11 +32,13 @@ def init_db():
                 owner_id BIGINT NOT NULL
             )
             """)
+
             # Таблица сообщений
             cur.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
                 owner_id BIGINT NOT NULL,
+                chat_id BIGINT,
                 sender_id BIGINT NOT NULL,
                 sender_name TEXT,
                 message_id BIGINT NOT NULL,
@@ -45,6 +47,31 @@ def init_db():
                 file_id TEXT,
                 token TEXT UNIQUE,
                 created_at TIMESTAMP DEFAULT NOW()
+            )
+            """)
+
+            # если у тебя старая таблица без chat_id — добавим (не ломает)
+            cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='messages' AND column_name='chat_id'
+                ) THEN
+                    ALTER TABLE messages ADD COLUMN chat_id BIGINT;
+                END IF;
+            END $$;
+            """)
+
+            # Таблица выбранного чата (чтобы /start показывал нужного юзера)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS active_chat (
+                owner_id BIGINT PRIMARY KEY,
+                chat_id BIGINT NOT NULL,
+                peer_id BIGINT NOT NULL,
+                peer_name TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT NOW()
             )
             """)
         conn.commit()
@@ -59,7 +86,6 @@ def cleanup_old():
         conn.commit()
 
 def save_owner(bc_id: str, owner_id: int):
-    # Сохранить ID владельца для данного бизнес-подключения
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -71,7 +97,6 @@ def save_owner(bc_id: str, owner_id: int):
         conn.commit()
 
 def get_owner(bc_id: str):
-    # Получить ID владельца по идентификатору бизнес-подключения
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -80,6 +105,67 @@ def get_owner(bc_id: str):
             """, (bc_id,))
             r = cur.fetchone()
             return r[0] if r else None
+
+def set_active_chat(owner_id: int, chat_id: int, peer_id: int, peer_name: str):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            INSERT INTO active_chat (owner_id, chat_id, peer_id, peer_name)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (owner_id)
+            DO UPDATE SET
+                chat_id = EXCLUDED.chat_id,
+                peer_id = EXCLUDED.peer_id,
+                peer_name = EXCLUDED.peer_name,
+                updated_at = NOW()
+            """, (owner_id, chat_id, peer_id, peer_name))
+        conn.commit()
+
+def get_active_chat(owner_id: int):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT chat_id, peer_id, peer_name
+            FROM active_chat
+            WHERE owner_id = %s
+            """, (owner_id,))
+            r = cur.fetchone()
+            if not r:
+                return None
+            return {"chat_id": r[0], "peer_id": r[1], "peer_name": r[2]}
+
+def get_recent_peers(owner_id: int, limit: int = 8):
+    # Берём последние разные чаты, чтобы ты мог выбрать нужного собеседника
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT DISTINCT ON (chat_id)
+                chat_id,
+                sender_id,
+                sender_name,
+                created_at
+            FROM messages
+            WHERE owner_id = %s
+              AND chat_id IS NOT NULL
+              AND sender_id != %s
+              AND sender_id != 0
+              AND sender_name IS NOT NULL
+            ORDER BY chat_id, created_at DESC
+            """, (owner_id, owner_id))
+            rows = cur.fetchall()
+
+    # отсортируем по времени (самые свежие сверху)
+    rows = sorted(rows, key=lambda x: x[3], reverse=True)
+    rows = rows[:limit]
+
+    res = []
+    for chat_id, sender_id, sender_name, _ in rows:
+        res.append({
+            "chat_id": int(chat_id),
+            "peer_id": int(sender_id),
+            "peer_name": str(sender_name)
+        })
+    return res
 
 # ================= TG API =================
 
@@ -139,13 +225,11 @@ def send_media(chat_id, msg_type, file_id, token):
                     raise Exception("Video note send failed")
             return
 
-        # документ или неизвестный тип
         r = tg("sendDocument", {"chat_id": chat_id, "document": file_id, "reply_markup": hide})
         if not r.ok:
             raise Exception("Document send failed")
 
     except Exception:
-        # Fallback: пробуем получить файл и отправить по URL
         resp = tg("getFile", {"file_id": file_id})
         if not resp.ok:
             send_text(chat_id,
@@ -166,7 +250,7 @@ def send_media(chat_id, msg_type, file_id, token):
             return
 
         file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
-        # Отправляем по URL в зависимости от типа:
+
         if msg_type == "photo":
             r3 = tg("sendPhoto", {"chat_id": chat_id, "photo": file_url, "reply_markup": hide})
             if not r3.ok:
@@ -192,7 +276,6 @@ def send_media(chat_id, msg_type, file_id, token):
             return
 
         if msg_type == "video_note":
-            # Пробуем как видеосообщение; если не выйдет – как обычное видео
             r3 = tg("sendVideoNote", {"chat_id": chat_id, "video_note": file_url, "reply_markup": hide})
             if not r3.ok:
                 r4 = tg("sendVideo", {"chat_id": chat_id, "video": file_url, "reply_markup": hide})
@@ -203,7 +286,6 @@ def send_media(chat_id, msg_type, file_id, token):
             return
 
         if msg_type == "document":
-            # Если документ – пытаемся определить, не фото или видео ли это по расширению
             ext = ""
             if "." in file_path:
                 ext = file_path.split(".")[-1].lower()
@@ -215,7 +297,6 @@ def send_media(chat_id, msg_type, file_id, token):
                 r3 = tg("sendVideo", {"chat_id": chat_id, "video": file_url, "reply_markup": hide})
                 if r3.ok:
                     return
-            # Иначе отправляем как документ
             r3 = tg("sendDocument", {"chat_id": chat_id, "document": file_url, "reply_markup": hide})
             if not r3.ok:
                 send_text(chat_id,
@@ -223,7 +304,6 @@ def send_media(chat_id, msg_type, file_id, token):
                           hide)
             return
 
-        # На всякий случай для прочих типов – отправляем как документ по URL
         r3 = tg("sendDocument", {"chat_id": chat_id, "document": file_url, "reply_markup": hide})
         if not r3.ok:
             send_text(chat_id,
@@ -232,34 +312,22 @@ def send_media(chat_id, msg_type, file_id, token):
         return
 
 def media_from_message(m):
-    # 1) photo (иногда пустой список — проверяем)
     if "photo" in m and isinstance(m["photo"], list) and len(m["photo"]) > 0:
         return "photo", m["photo"][-1].get("file_id")
-
-    # 2) video_note
     if "video_note" in m and isinstance(m["video_note"], dict):
         return "video_note", m["video_note"].get("file_id")
-
-    # 3) voice
     if "voice" in m and isinstance(m["voice"], dict):
         return "voice", m["voice"].get("file_id")
-
-    # 4) video
     if "video" in m and isinstance(m["video"], dict):
         return "video", m["video"].get("file_id")
-
-    # 5) document (часто исчезающее фото приходит сюда)
     if "document" in m and isinstance(m["document"], dict):
         fid = m["document"].get("file_id")
         mime = (m["document"].get("mime_type") or "").lower()
         if mime.startswith("image/"):
-            return "photo", fid  # попробуем как photo (fallback внутри send_media есть)
+            return "photo", fid
         return "document", fid
-
-    # 6) animation (редко)
     if "animation" in m and isinstance(m["animation"], dict):
         return "video", m["animation"].get("file_id")
-
     return None, None
 
 def label_for(msg_type: str) -> str:
@@ -268,7 +336,8 @@ def label_for(msg_type: str) -> str:
         "video": "🎥 Видео",
         "video_note": "🎥 Видеосообщение",
         "voice": "🎤 Голосовое сообщение",
-        "document": "📎 Файл"
+        "document": "📎 Файл",
+        "text": "💬 Сообщение"
     }.get(msg_type, "📎 Файл")
 
 # ================= WEBHOOK =================
@@ -299,6 +368,7 @@ def webhook():
             return "ok"
 
         sender = msg.get("from", {})
+        chat_id = (msg.get("chat") or {}).get("id")
 
         # 2.1) Исчезающее: владелец ответил (reply) на сообщение
         if sender.get("id") == owner_id and "reply_to_message" in msg:
@@ -308,11 +378,9 @@ def webhook():
             if not msg_type or not file_id:
                 return "ok"
 
-            # Только для исчезающих медиа: проверяем защиту от пересылки
             if not replied.get("has_protected_content"):
                 return "ok"
 
-            # антидубликат по file_id
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("SELECT 1 FROM messages WHERE owner_id=%s AND file_id=%s LIMIT 1",
@@ -322,7 +390,10 @@ def webhook():
 
             token = uuid.uuid4().hex[:10]
 
-            # сохраняем сообщение в базу
+            rep_from = replied.get("from", {}) or {}
+            rep_id = rep_from.get("id", 0)
+            rep_name = rep_from.get("first_name", "Без имени")
+
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
@@ -331,9 +402,9 @@ def webhook():
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """, (
                         owner_id,
-                        msg["chat"]["id"],
-                        replied.get("from", {}).get("id", 0),
-                        replied.get("from", {}).get("first_name", "Без имени"),
+                        chat_id,
+                        rep_id,
+                        rep_name,
                         replied.get("message_id", 0),
                         msg_type,
                         None,
@@ -344,9 +415,7 @@ def webhook():
 
             header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
             body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
-            sid = replied.get("from", {}).get("id", 0)
-            sname = replied.get("from", {}).get("first_name", "Без имени")
-            who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={sid}">{html.escape(sname)}</a>'
+            who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
 
             send_text(owner_id, header + body + who)
             return "ok"
@@ -359,7 +428,6 @@ def webhook():
         msg_type, file_id = media_from_message(msg)
         text = msg.get("text")
 
-        # если это не медиа и нет текста — просто игнор
         if not msg_type and not text:
             return "ok"
 
@@ -377,7 +445,7 @@ def webhook():
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """, (
                     owner_id,
-                    msg["chat"]["id"],
+                    chat_id,
                     sender.get("id", 0),
                     sender.get("first_name", "Без имени"),
                     msg.get("message_id", 0),
@@ -387,7 +455,7 @@ def webhook():
                     token
                 ))
             conn.commit()
-        # сохраняем текст сообщения в словарь для отслеживания изменений
+
         if text:
             message_history[(owner_id, msg.get("message_id"))] = text
 
@@ -457,20 +525,15 @@ def webhook():
         if not mid:
             return "ok"
 
-        # Получаем старый текст из истории
         old_text = message_history.get((owner_id, mid), "")
-        # Новый текст сообщения
         new_text = ebm.get("text") or ebm.get("caption") or ""
-        # Обновляем текст в словаре истории
         message_history[(owner_id, mid)] = new_text
 
-        # Получаем информацию об отправителе (кто изменил)
         editor_id = ebm.get("from", {}).get("id", 0)
         editor_name = f"{ebm.get('from', {}).get('first_name', '')} {ebm.get('from', {}).get('last_name', '')}".strip()
         editor_name = html.escape(editor_name)
         editor_link = f'<a href="tg://user?id={editor_id}">{editor_name}</a>'
 
-        # Формируем текст уведомления об изменении
         title = "✏️ <b>Новое изменённое сообщение</b>\n\n"
         body_old = (
             f"<blockquote>"
@@ -478,7 +541,6 @@ def webhook():
             f"{html.escape(old_text)}"
             f"</blockquote>\n\n"
         )
-
         body_new = (
             f"<blockquote>"
             f"<b>Новый текст:</b>\n"
@@ -490,35 +552,26 @@ def webhook():
         send_text(owner_id, title + body_old + body_new + who)
         return "ok"
 
-    # 5) /start и /start TOKEN
+    # 5) /start и /start TOKEN (в личке с ботом)
     if "message" in data:
         msg = data["message"]
         owner_id = msg["from"]["id"]
         text = (msg.get("text") or "").strip()
         chat_id = msg["chat"]["id"]
-    
-        # Нормализуем варианты /start, /start@BotName
-        # и ловим payload после /start (если есть)
+
         if text.startswith("/start"):
             parts = text.split(maxsplit=1)
-            cmd = parts[0]  # /start или /start@EyesSeeBot
+            cmd = parts[0]
             payload = parts[1].strip() if len(parts) > 1 else ""
-    
-            # Если команда не к нашему боту — игнор
-            # (на всякий случай)
+
             if "@" in cmd and cmd != f"/start@{BOT_USERNAME}":
                 return "ok"
-    
-            # ✅ Токеном считаем ТОЛЬКО 10 символов 0-9a-f (как ты генеришь uuid[:10])
+
+            # /start <token>
             if payload and re.fullmatch(r"[0-9a-f]{10}", payload):
-                # удаляем команду
-                tg("deleteMessage", {
-                    "chat_id": chat_id,
-                    "message_id": msg["message_id"]
-                })
-    
+                tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
+
                 token = payload
-    
                 with get_db() as conn:
                     with conn.cursor() as cur:
                         cur.execute("""
@@ -527,7 +580,7 @@ def webhook():
                         WHERE owner_id = %s AND token = %s
                         """, (owner_id, token))
                         r = cur.fetchone()
-    
+
                 if not r:
                     send_text(
                         chat_id,
@@ -536,52 +589,49 @@ def webhook():
                         hide_markup("error")
                     )
                     return "ok"
-    
+
                 msg_type, file_id = r
                 send_media(chat_id, msg_type, file_id, token)
                 return "ok"
-    
-            # === /start → меню управления (как у Catcher) ===
 
-            tg("deleteMessage", {
-                "chat_id": chat_id,
-                "message_id": msg["message_id"]
-            })
-            
-            with get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                    SELECT sender_name, sender_id
-                    FROM messages
-                    WHERE owner_id = %s
-                      AND chat_id = (
-                          SELECT chat_id
-                          FROM messages
-                          WHERE owner_id = %s
-                          ORDER BY created_at DESC
-                          LIMIT 1
-                      )
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                    """, (owner_id, owner_id))
-                    r = cur.fetchone()
-            
-            if r:
-                peer_name, peer_id = r
+            # /start → меню управления (как у Catcher, но выбор делаем в личке с ботом)
+            tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
+
+            a = get_active_chat(owner_id)
+            if a:
+                peer_name = a["peer_name"]
+                peer_id = a["peer_id"]
             else:
-                peer_name, peer_id = "пользователь", 0
-            
+                # если ещё не выбирал — покажем последнего (как раньше)
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                        SELECT sender_name, sender_id
+                        FROM messages
+                        WHERE owner_id = %s
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                        """, (owner_id,))
+                        r = cur.fetchone()
+                if r:
+                    peer_name, peer_id = r
+                else:
+                    peer_name, peer_id = "пользователь", 0
+
             text_msg = (
-                f"👤 <b>Это {html.escape(peer_name)}</b> (id: {peer_id})\n\n"
+                f"👤 <b>Это {html.escape(str(peer_name))}</b> (id: {int(peer_id)})\n\n"
                 "Здесь ты можешь восстановить переписку (если она была удалена) "
-                "или запустить огонёк у вас в чате. Подробнее в /settings"
+                "или запустить огонёк у вас в чате.\n"
+                "Чтобы выбрать нужный чат — нажми «Выбрать чат».\n\n"
+                "Подробнее в /settings"
             )
-            
+
             send_text(
                 chat_id,
                 text_msg,
                 {
                     "inline_keyboard": [
+                        [{"text": "🧩 Выбрать чат", "callback_data": "pick_chat"}],
                         [{"text": "♻️ Восстановить", "callback_data": "restore"}],
                         [{"text": "⚙️ Настройки", "callback_data": "settings"}]
                     ]
@@ -589,15 +639,94 @@ def webhook():
             )
             return "ok"
 
-    # 6) кнопка Скрыть
+    # 6) callback-кнопки
     if "callback_query" in data:
         cq = data["callback_query"]
         m = cq.get("message")
-        if m:
-            tg("deleteMessage", {
-                "chat_id": m["chat"]["id"],
-                "message_id": m["message_id"]
-            })
+        chat_id = (m.get("chat") or {}).get("id") if m else None
+        mid = m.get("message_id") if m else None
+
+        owner_id = (cq.get("from") or {}).get("id", 0)
+        cd = cq.get("data") or ""
+
+        # скрыть
+        if cd.startswith("hide:"):
+            if chat_id and mid:
+                tg("deleteMessage", {"chat_id": chat_id, "message_id": mid})
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+            return "ok"
+
+        # показать список чатов в личке с ботом
+        if cd == "pick_chat":
+            peers = get_recent_peers(owner_id, limit=10)
+
+            if not peers:
+                tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+                if chat_id:
+                    send_text(chat_id, "❌ <b>Нет данных</b>\nСначала нужно, чтобы бот получил хоть одно сообщение в бизнес-чатах.")
+                return "ok"
+
+            kb = []
+            for p in peers:
+                nm = (p["peer_name"] or "пользователь").strip()
+                if len(nm) > 24:
+                    nm = nm[:24] + "…"
+                kb.append([{
+                    "text": f"👤 {nm}",
+                    "callback_data": f"set_chat:{p['chat_id']}:{p['peer_id']}"
+                }])
+
+            kb.append([{"text": "✖️ Скрыть", "callback_data": "hide:menu"}])
+
+            if chat_id:
+                send_text(
+                    chat_id,
+                    "<b>Выбери чат</b> (это увидишь только ты, это в личке с ботом):",
+                    {"inline_keyboard": kb}
+                )
+
+            # можно удалить старое меню, чтобы было чисто
+            if chat_id and mid:
+                tg("deleteMessage", {"chat_id": chat_id, "message_id": mid})
+
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+            return "ok"
+
+        # установить выбранный чат
+        if cd.startswith("set_chat:"):
+            try:
+                _, c_id, p_id = cd.split(":", 2)
+                c_id = int(c_id)
+                p_id = int(p_id)
+            except Exception:
+                tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+                return "ok"
+
+            # имя берём из базы (самое свежее по этому chat_id)
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                    SELECT sender_name
+                    FROM messages
+                    WHERE owner_id = %s AND chat_id = %s AND sender_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """, (owner_id, c_id, p_id))
+                    r = cur.fetchone()
+
+            nm = r[0] if r and r[0] else "пользователь"
+            set_active_chat(owner_id, c_id, p_id, nm)
+
+            # удаляем сообщение с кнопками — чтобы было “секретно”
+            if chat_id and mid:
+                tg("deleteMessage", {"chat_id": chat_id, "message_id": mid})
+
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "✅ Выбрано"})
+            return "ok"
+
+        # остальные кнопки пока просто скрываем (не ломаем логику)
+        if chat_id and mid:
+            tg("deleteMessage", {"chat_id": chat_id, "message_id": mid})
         tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         return "ok"
 
