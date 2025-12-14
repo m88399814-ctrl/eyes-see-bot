@@ -105,7 +105,7 @@ def hide_markup(token: str):
 def send_media(chat_id, msg_type, file_id, token):
     hide = hide_markup(token)
     # DEBUG: если нужно, можно временно включить
-    # send_text(chat_id, f"DEBUG: type={msg_type}, file_id={file_id}", hide)
+    send_text(chat_id, f"DEBUG: type={msg_type}, file_id={file_id}", hide)
     try:
         if msg_type == "photo":
             r = tg("sendPhoto", {"chat_id": chat_id, "photo": file_id, "reply_markup": hide})
@@ -145,8 +145,9 @@ def send_media(chat_id, msg_type, file_id, token):
 
     except Exception as e:
         # DEBUG: покажем причину падения первой отправки
-        # send_text(chat_id, f"DEBUG send failed: {repr(e)}", hide)
+        send_text(chat_id, f"DEBUG send failed: {repr(e)}", hide)
         resp = tg("getFile", {"file_id": file_id})
+        send_text(chat_id, f"DEBUG getFile response: {j}", hide)
         try:
             j = resp.json()
         except Exception:
