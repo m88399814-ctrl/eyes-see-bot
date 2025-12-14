@@ -555,10 +555,14 @@ def webhook():
                     cur.execute("""
                     SELECT sender_name, sender_id
                     FROM messages
-                    WHERE owner_id = %s AND chat_id = %s
+                    WHERE owner_id = %s
+                      AND chat_id = %s
+                      AND sender_id != %s
+                      AND sender_id != 0
+                      AND sender_name IS NOT NULL
                     ORDER BY created_at DESC
                     LIMIT 1
-                    """, (owner_id, chat_id))
+                    """, (owner_id, chat_id, owner_id))
                     r = cur.fetchone()
             
             if r:
