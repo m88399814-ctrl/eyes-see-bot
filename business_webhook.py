@@ -554,7 +554,7 @@ def webhook():
                     cur.execute("""
                     SELECT sender_name, sender_id
                     FROM messages
-                    WHERE owner_id = %s
+                    WHERE owner_id = %s AND chat_id = %s
                     ORDER BY created_at DESC
                     LIMIT 1
                     """, (owner_id, chat_id))
