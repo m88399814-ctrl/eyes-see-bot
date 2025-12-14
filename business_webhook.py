@@ -279,6 +279,26 @@ def webhook():
 
     if not data:
         return "ok"
+    # === /start из управления ботом (глобально) ===
+    if "message" in data:
+        msg = data["message"]
+        text = msg.get("text", "")
+        chat_id = msg["chat"]["id"]
+    
+        if text == "/start":
+            print("START MENU TRIGGERED")
+    
+            send_text(
+                chat_id,
+                "<b>Управление ботом</b>\n\nВыберите действие:",
+                {
+                    "inline_keyboard": [
+                        [{"text": "♻️ Восстановить", "callback_data": "restore"}],
+                        [{"text": "⚙️ Настройки", "callback_data": "settings"}]
+                    ]
+                }
+            )
+            return "ok"
 
     # 1) подключение бизнес-аккаунта
     if "business_connection" in data:
@@ -494,20 +514,7 @@ def webhook():
         text = msg.get("text", "")
         chat_id = msg["chat"]["id"]
                 # === START ИЗ УПРАВЛЕНИЯ БОТОМ ===
-        if text == "/start":
-            print("START MENU TRIGGERED")
-            send_text(
-                chat_id,
-                "<b>Управление ботом</b>\n\nВыберите действие:",
-                {
-                    "inline_keyboard": [
-                        [{"text": "♻️ Восстановить", "callback_data": "restore"}],
-                        [{"text": "⚙️ Настройки", "callback_data": "settings"}]
-                    ]
-                }
-            )
-            return "ok"
-
+       
         if text.startswith("/start "):
             # удаляем команду
             tg("deleteMessage", {
