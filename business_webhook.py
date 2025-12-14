@@ -494,7 +494,7 @@ def webhook():
         text = msg.get("text", "")
         chat_id = msg["chat"]["id"]
                 # === START ИЗ УПРАВЛЕНИЯ БОТОМ ===
-        if text == "/start" and msg.get("business_connection_id"):
+        if text == "/start"):
             send_text(
                 chat_id,
                 "<b>Управление ботом</b>\n\n"
