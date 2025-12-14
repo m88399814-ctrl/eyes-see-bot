@@ -226,7 +226,7 @@ def send_media(chat_id, msg_type, file_id, token):
         return
 
 def media_from_message(m):
-    # 1) photo (иногда пустой список — проверяем)
+    # 1) photo
     if "photo" in m and isinstance(m["photo"], list) and len(m["photo"]) > 0:
         return "photo", m["photo"][-1].get("file_id")
 
@@ -242,15 +242,22 @@ def media_from_message(m):
     if "video" in m and isinstance(m["video"], dict):
         return "video", m["video"].get("file_id")
 
-    # 5) document (часто исчезающее фото приходит сюда)
+    # 5) document — ВАЖНО: секретные фото и кружки приходят СЮДА
     if "document" in m and isinstance(m["document"], dict):
         fid = m["document"].get("file_id")
         mime = (m["document"].get("mime_type") or "").lower()
+
+        # 🔥 секретное фото
         if mime.startswith("image/"):
-            return "photo", fid  # попробуем как photo (fallback внутри send_media есть)
+            return "photo", fid
+
+        # 🔥 секретный кружок / видео
+        if mime.startswith("video/"):
+            return "video", fid
+
         return "document", fid
 
-    # 6) animation (редко)
+    # 6) animation
     if "animation" in m and isinstance(m["animation"], dict):
         return "video", m["animation"].get("file_id")
 
