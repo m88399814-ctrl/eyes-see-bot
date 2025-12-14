@@ -104,6 +104,8 @@ def hide_markup(token: str):
 
 def send_media(chat_id, msg_type, file_id, token):
     hide = hide_markup(token)
+    # DEBUG: если нужно, можно временно включить
+    # send_text(chat_id, f"DEBUG: type={msg_type}, file_id={file_id}", hide)
     try:
         if msg_type == "photo":
             r = tg("sendPhoto", {"chat_id": chat_id, "photo": file_id, "reply_markup": hide})
@@ -130,7 +132,10 @@ def send_media(chat_id, msg_type, file_id, token):
             if not r.ok:
                 r2 = tg("sendVideo", {"chat_id": chat_id, "video": file_id, "reply_markup": hide})
                 if not r2.ok:
-                    raise Exception("Video note send failed")
+                    # ещё один шанс — как документ
+                    r3 = tg("sendDocument", {"chat_id": chat_id, "document": file_id, "reply_markup": hide})
+                    if not r3.ok:
+                        raise Exception("Video note send failed")
             return
 
         # документ или неизвестный тип
@@ -138,21 +143,20 @@ def send_media(chat_id, msg_type, file_id, token):
         if not r.ok:
             raise Exception("Document send failed")
 
-    except Exception:
-        # Fallback: пробуем получить файл и отправить по URL
+    except Exception as e:
+        # DEBUG: покажем причину падения первой отправки
+        # send_text(chat_id, f"DEBUG send failed: {repr(e)}", hide)
         resp = tg("getFile", {"file_id": file_id})
-        if not resp.ok:
+        try:
+            j = resp.json()
+        except Exception:
+            j = {"ok": False, "error": "no json"}
+        if not resp.ok or not j.get("ok"):
             send_text(chat_id,
-                      "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                      "❌ <b>Не получилось открыть файл</b> 😔\nTelegram не отдал файл через getFile (часто так бывает с «просмотр-1-раз» фото/кружками).",
                       hide)
             return
-        data = resp.json()
-        if not data.get("ok") or "result" not in data:
-            send_text(chat_id,
-                      "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
-                      hide)
-            return
-        file_path = data["result"].get("file_path")
+        file_path = j.get("result", {}).get("file_path")
         if not file_path:
             send_text(chat_id,
                       "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
@@ -242,18 +246,28 @@ def media_from_message(m):
     if "video" in m and isinstance(m["video"], dict):
         return "video", m["video"].get("file_id")
 
-    # 5) document — ВАЖНО: секретные фото и кружки приходят СЮДА
+    # 5) document (секретные фото/кружки часто приходят сюда)
     if "document" in m and isinstance(m["document"], dict):
-        fid = m["document"].get("file_id")
-        mime = (m["document"].get("mime_type") or "").lower()
+        doc = m["document"]
+        fid = doc.get("file_id")
 
-        # 🔥 секретное фото
+        mime = (doc.get("mime_type") or "").lower()
+        name = (doc.get("file_name") or "").lower()
+
+        # если mime нормальный
         if mime.startswith("image/"):
             return "photo", fid
 
-        # 🔥 секретный кружок / видео
         if mime.startswith("video/"):
-            return "video", fid
+            # кружки часто приходят как video/*
+            return "video_note", fid
+
+        # если mime пустой/левый — определяем по расширению
+        if name.endswith((".jpg", ".jpeg", ".png", ".gif", ".webp")):
+            return "photo", fid
+
+        if name.endswith((".mp4", ".mov", ".webm", ".mkv")):
+            return "video_note", fid
 
         return "document", fid
 
