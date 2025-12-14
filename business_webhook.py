@@ -494,19 +494,18 @@ def webhook():
         text = msg.get("text", "")
         chat_id = msg["chat"]["id"]
                 # === START ИЗ УПРАВЛЕНИЯ БОТОМ ===
-        if text == "/start"):
-            send_text(
-                chat_id,
-                "<b>Управление ботом</b>\n\n"
-                "Выберите действие:",
-                {
-                    "inline_keyboard": [
-                        [{"text": "♻️ Восстановить", "callback_data": "restore"}],
-                        [{"text": "⚙️ Настройки", "callback_data": "settings"}]
-                    ]
-                }
-            )
-            return "ok"
+         if text == "/start":
+             send_text(
+                 chat_id,
+                 "<b>Управление ботом</b>\n\nВыберите действие:",
+                 {
+                     "inline_keyboard": [
+                         [{"text": "♻️ Восстановить", "callback_data": "restore"}],
+                         [{"text": "⚙️ Настройки", "callback_data": "settings"}]
+                     ]
+                 }
+             )
+             return "ok"
 
         if text.startswith("/start "):
             # удаляем команду
