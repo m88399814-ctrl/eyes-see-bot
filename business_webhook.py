@@ -469,8 +469,19 @@ def webhook():
 
         # Формируем текст уведомления об изменении
         title = "✏️ <b>Новое изменённое сообщение</b>\n\n"
-        body_old = f"Старый текст:\n<blockquote>{html.escape(old_text)}</blockquote>\n\n"
-        body_new = f"Новый текст:\n<blockquote>{html.escape(new_text)}</blockquote>\n\n"
+        body_old = (
+            f"<blockquote>"
+            f"<b>Старый текст:</b>\n"
+            f"{html.escape(old_text)}"
+            f"</blockquote>\n\n"
+        )
+
+        body_new = (
+            f"<blockquote>"
+            f"<b>Новый текст:</b>\n"
+            f"{html.escape(new_text)}"
+            f"</blockquote>\n\n"
+        )
         who = f"Изменил(а): {editor_link}"
 
         send_text(owner_id, title + body_old + body_new + who)
