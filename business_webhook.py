@@ -302,6 +302,10 @@ def webhook():
             if not msg_type or not file_id:
                 return "ok"
 
+            # Только для исчезающих медиа: проверяем защиту от пересылки
+            if not replied.get("has_protected_content"):
+                return "ok"
+
             # антидубликат по file_id
             with get_db() as conn:
                 with conn.cursor() as cur:
@@ -312,7 +316,7 @@ def webhook():
 
             token = uuid.uuid4().hex[:10]
 
-            # сохраняем
+            # сохраняем сообщение в базу
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
@@ -429,7 +433,70 @@ def webhook():
 
         return "ok"
 
-    # 4) /start TOKEN → открыть файл
+    # 4) изменение сообщений (группировка 1 сек)
+    if "edited_business_message" in data:
+        ebm = data["edited_business_message"]
+        bc_id = ebm.get("business_connection_id")
+        owner_id = get_owner(bc_id)
+        if not owner_id:
+            return "ok"
+        time.sleep(1)
+
+        mid = ebm.get("message_id")
+        if not mid:
+            return "ok"
+
+        blocks = []
+        sender_id = None
+        sender_name = None
+
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                SELECT msg_type, text, sender_name, sender_id, token
+                FROM messages
+                WHERE owner_id = %s AND message_id = %s
+                """, (owner_id, mid))
+                r = cur.fetchone()
+
+                if not r:
+                    return "ok"
+
+                msg_type, old_text, sender_name, sender_id, token = r
+
+                new_text = ebm.get("text") or ebm.get("caption")
+
+                if new_text is not None:
+                    # обновляем сохранённое сообщение новым текстом
+                    cur.execute("""
+                    UPDATE messages
+                    SET text = %s
+                    WHERE owner_id = %s AND message_id = %s
+                    """, (new_text, owner_id, mid))
+            conn.commit()
+
+        if msg_type == "text":
+            blocks.append(f"Старый текст:\n<blockquote>{old_text or ''}</blockquote>")
+            blocks.append(f"Новый текст:\n<blockquote>{new_text or ''}</blockquote>")
+        else:
+            blocks.append(f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>')
+            blocks.append(f"Старый текст:\n<blockquote>{old_text or ''}</blockquote>")
+            blocks.append(f"Новый текст:\n<blockquote>{new_text or ''}</blockquote>")
+
+        title = (
+            "✏️ <b>Новое изменённое сообщение</b>\n\n"
+            if (len(blocks) == 2 or len(blocks) == 3)
+            else "✏️ <b>Новые изменённые сообщения</b>\n\n"
+        )
+
+        who = ""
+        if sender_id and sender_name:
+            who = f'\n\nИзменил(а): <a href="tg://user?id={sender_id}">{sender_name}</a>'
+
+        send_text(owner_id, title + "\n".join(blocks) + who)
+        return "ok"
+
+    # 5) /start TOKEN → открыть файл
     if "message" in data:
         msg = data["message"]
         owner_id = msg["from"]["id"]
@@ -467,7 +534,7 @@ def webhook():
             send_media(chat_id, msg_type, file_id, token)
             return "ok"
 
-    # 5) кнопка Скрыть
+    # 6) кнопка Скрыть
     if "callback_query" in data:
         cq = data["callback_query"]
         m = cq.get("message")
