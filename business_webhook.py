@@ -1,8 +1,10 @@
+# -*- coding: utf-8 -*-
 import os
 import uuid
 import time
 import psycopg2
 import requests
+import html
 from flask import Flask, request
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -10,6 +12,9 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 BOT_USERNAME = "EyesSeeBot"  # без @
 
 app = Flask(__name__)
+
+# Словарь для хранения последнего известного текста сообщений (ключ: (owner_id, message_id))
+message_history = {}
 
 # ================= DB =================
 
@@ -339,7 +344,7 @@ def webhook():
             body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
             sid = replied.get("from", {}).get("id", 0)
             sname = replied.get("from", {}).get("first_name", "Без имени")
-            who = f'\n\nОтправил(а): <a href="tg://user?id={sid}">{sname}</a>'
+            who = f'\n\nОтправил(а): <a href="tg://user?id={sid}">{html.escape(sname)}</a>'
 
             send_text(owner_id, header + body + who)
             return "ok"
@@ -379,6 +384,9 @@ def webhook():
                     token
                 ))
             conn.commit()
+        # сохраняем текст сообщения в словарь для отслеживания изменений
+        if text:
+            message_history[(owner_id, msg.get("message_id"))] = text
 
         return "ok"
 
@@ -412,7 +420,7 @@ def webhook():
             msg_type, text, sender_name, sender_id, token = r
 
             if msg_type == "text":
-                blocks.append(f"<blockquote>{text}</blockquote>")
+                blocks.append(f"<blockquote>{html.escape(text or '')}</blockquote>")
             else:
                 blocks.append(
                     f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
@@ -427,7 +435,7 @@ def webhook():
 
             who = ""
             if sender_id and sender_name:
-                who = f'\n\nУдалил(а): <a href="tg://user?id={sender_id}">{sender_name}</a>'
+                who = f'\n\nУдалил(а): <a href="tg://user?id={sender_id}">{html.escape(sender_name)}</a>'
 
             send_text(owner_id, title + "\n".join(blocks) + who)
 
@@ -446,54 +454,26 @@ def webhook():
         if not mid:
             return "ok"
 
-        blocks = []
-        sender_id = None
-        sender_name = None
+        # Получаем старый текст из истории
+        old_text = message_history.get((owner_id, mid), "")
+        # Новый текст сообщения
+        new_text = ebm.get("text") or ebm.get("caption") or ""
+        # Обновляем текст в словаре истории
+        message_history[(owner_id, mid)] = new_text
 
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                SELECT msg_type, text, sender_name, sender_id, token
-                FROM messages
-                WHERE owner_id = %s AND message_id = %s
-                """, (owner_id, mid))
-                r = cur.fetchone()
+        # Получаем информацию об отправителе (кто изменил)
+        editor_id = ebm.get("from", {}).get("id", 0)
+        editor_name = f"{ebm.get('from', {}).get('first_name', '')} {ebm.get('from', {}).get('last_name', '')}".strip()
+        editor_name = html.escape(editor_name)
+        editor_link = f'<a href="tg://user?id={editor_id}">{editor_name}</a>'
 
-                if not r:
-                    return "ok"
+        # Формируем текст уведомления об изменении
+        title = "✏️ <b>Новое изменённое сообщение</b>\n\n"
+        body_old = f"Старый текст:\n<blockquote>{html.escape(old_text)}</blockquote>\n\n"
+        body_new = f"Новый текст:\n<blockquote>{html.escape(new_text)}</blockquote>\n\n"
+        who = f"Изменил(а): {editor_link}"
 
-                msg_type, old_text, sender_name, sender_id, token = r
-
-                new_text = ebm.get("text") or ebm.get("caption")
-
-                if new_text is not None:
-                    # обновляем сохранённое сообщение новым текстом
-                    cur.execute("""
-                    UPDATE messages
-                    SET text = %s
-                    WHERE owner_id = %s AND message_id = %s
-                    """, (new_text, owner_id, mid))
-            conn.commit()
-
-        if msg_type == "text":
-            blocks.append(f"Старый текст:\n<blockquote>{old_text or ''}</blockquote>")
-            blocks.append(f"Новый текст:\n<blockquote>{new_text or ''}</blockquote>")
-        else:
-            blocks.append(f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>')
-            blocks.append(f"Старый текст:\n<blockquote>{old_text or ''}</blockquote>")
-            blocks.append(f"Новый текст:\n<blockquote>{new_text or ''}</blockquote>")
-
-        title = (
-            "✏️ <b>Новое изменённое сообщение</b>\n\n"
-            if (len(blocks) == 2 or len(blocks) == 3)
-            else "✏️ <b>Новые изменённые сообщения</b>\n\n"
-        )
-
-        who = ""
-        if sender_id and sender_name:
-            who = f'\n\nИзменил(а): <a href="tg://user?id={sender_id}">{sender_name}</a>'
-
-        send_text(owner_id, title + "\n".join(blocks) + who)
+        send_text(owner_id, title + body_old + body_new + who)
         return "ok"
 
     # 5) /start TOKEN → открыть файл
