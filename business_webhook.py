@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import re
 import os
 import uuid
 import time
@@ -488,45 +489,58 @@ def webhook():
         return "ok"
 
     # 5) /start и /start TOKEN
+    # 5) /start и /start TOKEN
     if "message" in data:
         msg = data["message"]
         owner_id = msg["from"]["id"]
-        text = msg.get("text", "")
+        text = (msg.get("text") or "").strip()
         chat_id = msg["chat"]["id"]
     
-        # 1️⃣ /start TOKEN → открыть файл
-        if text.startswith("/start "):
-            tg("deleteMessage", {
-                "chat_id": chat_id,
-                "message_id": msg["message_id"]
-            })
+        # Нормализуем варианты /start, /start@BotName
+        # и ловим payload после /start (если есть)
+        if text.startswith("/start"):
+            parts = text.split(maxsplit=1)
+            cmd = parts[0]  # /start или /start@EyesSeeBot
+            payload = parts[1].strip() if len(parts) > 1 else ""
     
-            token = text.split(" ", 1)[1].strip()
-    
-            with get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                    SELECT msg_type, file_id
-                    FROM messages
-                    WHERE owner_id = %s AND token = %s
-                    """, (owner_id, token))
-                    r = cur.fetchone()
-    
-            if not r:
-                send_text(
-                    chat_id,
-                    "❌ <b>Не получилось открыть файл</b> 😔\n"
-                    "Возможно он был отправлен слишком давно",
-                    hide_markup("error")
-                )
+            # Если команда не к нашему боту — игнор
+            # (на всякий случай)
+            if "@" in cmd and cmd != f"/start@{BOT_USERNAME}":
                 return "ok"
     
-            msg_type, file_id = r
-            send_media(chat_id, msg_type, file_id, token)
-            return "ok"
+            # ✅ Токеном считаем ТОЛЬКО 10 символов 0-9a-f (как ты генеришь uuid[:10])
+            if payload and re.fullmatch(r"[0-9a-f]{10}", payload):
+                # удаляем команду
+                tg("deleteMessage", {
+                    "chat_id": chat_id,
+                    "message_id": msg["message_id"]
+                })
     
-        # 2️⃣ /start → меню управления ботом
-        if text == "/start":
+                token = payload
+    
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                        SELECT msg_type, file_id
+                        FROM messages
+                        WHERE owner_id = %s AND token = %s
+                        """, (owner_id, token))
+                        r = cur.fetchone()
+    
+                if not r:
+                    send_text(
+                        chat_id,
+                        "❌ <b>Не получилось открыть файл</b> 😔\n"
+                        "Возможно он был отправлен слишком давно",
+                        hide_markup("error")
+                    )
+                    return "ok"
+    
+                msg_type, file_id = r
+                send_media(chat_id, msg_type, file_id, token)
+                return "ok"
+    
+            # ✅ ВСЁ ОСТАЛЬНОЕ (/start без токена, /start что-то непонятное, управление ботом) → меню
             send_text(
                 chat_id,
                 "<b>Управление ботом</b>\n\nВыберите действие:",
