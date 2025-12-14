@@ -37,7 +37,6 @@ def init_db():
             CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
                 owner_id BIGINT NOT NULL,
-                chat_id BIGINT NOT NULL,
                 sender_id BIGINT NOT NULL,
                 sender_name TEXT,
                 message_id BIGINT NOT NULL,
@@ -329,7 +328,7 @@ def webhook():
                     cur.execute("""
                     INSERT INTO messages
                     (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                     """, (
                         owner_id,
                         msg["chat"]["id"],
@@ -375,7 +374,7 @@ def webhook():
                 cur.execute("""
                 INSERT INTO messages
                 (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                 """, (
                     owner_id,
                     msg["chat"]["id"],
@@ -551,18 +550,13 @@ def webhook():
             
             with get_db() as conn:
                 with conn.cursor() as cur:
-                    chat_id = msg["chat"]["id"]
                     cur.execute("""
                     SELECT sender_name, sender_id
                     FROM messages
                     WHERE owner_id = %s
-                      AND chat_id = %s
-                      AND sender_id != %s
-                      AND sender_id != 0
-                      AND sender_name IS NOT NULL
                     ORDER BY created_at DESC
                     LIMIT 1
-                    """, (owner_id, chat_id, owner_id))
+                    """, (owner_id,))
                     r = cur.fetchone()
             
             if r:
