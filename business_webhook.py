@@ -37,6 +37,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
                 owner_id BIGINT NOT NULL,
+                chat_id BIGINT NOT NULL,
                 sender_id BIGINT NOT NULL,
                 sender_name TEXT,
                 message_id BIGINT NOT NULL,
@@ -328,7 +329,7 @@ def webhook():
                     cur.execute("""
                     INSERT INTO messages
                     (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """, (
                         owner_id,
                         msg["chat"]["id"],
@@ -374,7 +375,7 @@ def webhook():
                 cur.execute("""
                 INSERT INTO messages
                 (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """, (
                     owner_id,
                     msg["chat"]["id"],
