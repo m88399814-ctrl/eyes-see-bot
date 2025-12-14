@@ -593,37 +593,35 @@ def webhook():
                 msg_type, file_id = r
                 send_media(chat_id, msg_type, file_id, token)
                 return "ok"
-                # /recover — выбор чата для восстановления
-                if text == "/recover" or text == f"/recover@{BOT_USERNAME}":
-                    tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
-            
-                    peers = get_recent_peers(owner_id, limit=10)
-            
-                    if not peers:
-                        send_text(chat_id, "❌ <b>Нет данных для восстановления</b>")
-                        return "ok"
-            
-                    kb = []
-                    for p in peers:
-                        name = (p["peer_name"] or "пользователь").strip()
-                        if len(name) > 28:
-                            name = name[:28] + "…"
-                        kb.append([{
-                            "text": f"👤 {name}",
-                            "callback_data": f"recover_chat:{p['chat_id']}:{p['peer_id']}"
-                        }])
-            
-                    # кнопка СКРЫТЬ — ВСЕГДА В КОНЦЕ
-                    kb.append([{"text": "✖️ Скрыть", "callback_data": "hide:recover"}])
-            
-                    send_text(
-                        chat_id,
-                        "<b>Выбери чат, который хочешь восстановить:</b>",
-                        {"inline_keyboard": kb}
-                    )
-                    return "ok"
-
+        # /recover — выбор чата для восстановления
+        if text == "/recover" or text == f"/recover@{BOT_USERNAME}":
+            tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
     
+            peers = get_recent_peers(owner_id, limit=10)
+    
+            if not peers:
+                send_text(chat_id, "❌ <b>Нет данных для восстановления</b>")
+                return "ok"
+    
+            kb = []
+            for p in peers:
+                name = (p["peer_name"] or "пользователь").strip()
+                if len(name) > 28:
+                    name = name[:28] + "…"
+                kb.append([{
+                    "text": f"👤 {name}",
+                    "callback_data": f"recover_chat:{p['chat_id']}:{p['peer_id']}"
+                }])
+    
+            # кнопка СКРЫТЬ — ВСЕГДА В КОНЦЕ
+            kb.append([{"text": "✖️ Скрыть", "callback_data": "hide:recover"}])
+    
+            send_text(
+                chat_id,
+                "<b>Выбери чат, который хочешь восстановить:</b>",
+                {"inline_keyboard": kb}
+            )
+            return "ok"
     # 6) callback-кнопки
     if "callback_query" in data:
         cq = data["callback_query"]
