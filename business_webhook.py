@@ -279,26 +279,6 @@ def webhook():
 
     if not data:
         return "ok"
-    # === /start из управления ботом (глобально) ===
-    if "message" in data:
-        msg = data["message"]
-        text = msg.get("text", "")
-        chat_id = msg["chat"]["id"]
-    
-        if text == "/start":
-            print("START MENU TRIGGERED")
-    
-            send_text(
-                chat_id,
-                "<b>Управление ботом</b>\n\nВыберите действие:",
-                {
-                    "inline_keyboard": [
-                        [{"text": "♻️ Восстановить", "callback_data": "restore"}],
-                        [{"text": "⚙️ Настройки", "callback_data": "settings"}]
-                    ]
-                }
-            )
-            return "ok"
 
     # 1) подключение бизнес-аккаунта
     if "business_connection" in data:
@@ -507,23 +487,22 @@ def webhook():
         send_text(owner_id, title + body_old + body_new + who)
         return "ok"
 
-    # 5) /start TOKEN → открыть файл
+    # 5) /start и /start TOKEN
     if "message" in data:
         msg = data["message"]
         owner_id = msg["from"]["id"]
         text = msg.get("text", "")
         chat_id = msg["chat"]["id"]
-                # === START ИЗ УПРАВЛЕНИЯ БОТОМ ===
-       
+    
+        # 1️⃣ /start TOKEN → открыть файл
         if text.startswith("/start "):
-            # удаляем команду
             tg("deleteMessage", {
                 "chat_id": chat_id,
                 "message_id": msg["message_id"]
             })
-
+    
             token = text.split(" ", 1)[1].strip()
-
+    
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
@@ -532,7 +511,7 @@ def webhook():
                     WHERE owner_id = %s AND token = %s
                     """, (owner_id, token))
                     r = cur.fetchone()
-
+    
             if not r:
                 send_text(
                     chat_id,
@@ -541,9 +520,23 @@ def webhook():
                     hide_markup("error")
                 )
                 return "ok"
-
+    
             msg_type, file_id = r
             send_media(chat_id, msg_type, file_id, token)
+            return "ok"
+    
+        # 2️⃣ /start → меню управления ботом
+        if text == "/start":
+            send_text(
+                chat_id,
+                "<b>Управление ботом</b>\n\nВыберите действие:",
+                {
+                    "inline_keyboard": [
+                        [{"text": "♻️ Восстановить", "callback_data": "restore"}],
+                        [{"text": "⚙️ Настройки", "callback_data": "settings"}]
+                    ]
+                }
+            )
             return "ok"
 
     # 6) кнопка Скрыть
