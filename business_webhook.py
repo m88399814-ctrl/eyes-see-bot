@@ -541,6 +541,14 @@ def webhook():
                 return "ok"
     
             # ✅ ВСЁ ОСТАЛЬНОЕ (/start без токена, /start что-то непонятное, управление ботом) → меню
+            # ✅ ВСЁ ОСТАЛЬНОЕ → меню
+
+            # удаляем /start
+            tg("deleteMessage", {
+                "chat_id": chat_id,
+                "message_id": msg["message_id"]
+            })
+            
             send_text(
                 chat_id,
                 "<b>Управление ботом</b>\n\nВыберите действие:",
