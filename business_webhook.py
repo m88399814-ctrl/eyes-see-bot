@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import json
 import os
 import uuid
 import time
@@ -275,12 +274,7 @@ def label_for(msg_type: str) -> str:
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json(force=True)
-
-    print("====== RAW UPDATE ======")
-    print(json.dumps(data, indent=2, ensure_ascii=False))
-    print("========================")
-
+    data = request.get_json(silent=True)
     cleanup_old()
 
     if not data:
