@@ -344,7 +344,7 @@ def webhook():
             body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
             sid = replied.get("from", {}).get("id", 0)
             sname = replied.get("from", {}).get("first_name", "Без имени")
-            who = f'\n\nОтправил(а): <a href="tg://user?id={sid}">{html.escape(sname)}</a>'
+            who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={sid}">{html.escape(sname)}</a>'
 
             send_text(owner_id, header + body + who)
             return "ok"
@@ -435,7 +435,7 @@ def webhook():
 
             who = ""
             if sender_id and sender_name:
-                who = f'\n\nУдалил(а): <a href="tg://user?id={sender_id}">{html.escape(sender_name)}</a>'
+                who = f'\n\n<b>Удалил(а):</b> <a href="tg://user?id={sender_id}">{html.escape(sender_name)}</a>'
 
             send_text(owner_id, title + "\n".join(blocks) + who)
 
@@ -482,7 +482,7 @@ def webhook():
             f"{html.escape(new_text)}"
             f"</blockquote>\n\n"
         )
-        who = f"Изменил(а): {editor_link}"
+        who = f"<b>Изменил(а):</b> {editor_link}"
 
         send_text(owner_id, title + body_old + body_new + who)
         return "ok"
