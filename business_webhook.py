@@ -489,7 +489,6 @@ def webhook():
         return "ok"
 
     # 5) /start и /start TOKEN
-    # 5) /start и /start TOKEN
     if "message" in data:
         msg = data["message"]
         owner_id = msg["from"]["id"]
@@ -540,18 +539,38 @@ def webhook():
                 send_media(chat_id, msg_type, file_id, token)
                 return "ok"
     
-            # ✅ ВСЁ ОСТАЛЬНОЕ (/start без токена, /start что-то непонятное, управление ботом) → меню
-            # ✅ ВСЁ ОСТАЛЬНОЕ → меню
+            # === /start → меню управления (как у Catcher) ===
 
-            # удаляем /start
             tg("deleteMessage", {
                 "chat_id": chat_id,
                 "message_id": msg["message_id"]
             })
             
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                    SELECT sender_name, sender_id
+                    FROM messages
+                    WHERE owner_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """, (owner_id,))
+                    r = cur.fetchone()
+            
+            if r:
+                peer_name, peer_id = r
+            else:
+                peer_name, peer_id = "пользователь", 0
+            
+            text_msg = (
+                f"👤 <b>Это {html.escape(peer_name)}</b> (id: {peer_id})\n\n"
+                "Здесь ты можешь восстановить переписку (если она была удалена) "
+                "или запустить огонёк у вас в чате. Подробнее в /settings"
+            )
+            
             send_text(
                 chat_id,
-                "<b>Управление ботом</b>\n\nВыберите действие:",
+                text_msg,
                 {
                     "inline_keyboard": [
                         [{"text": "♻️ Восстановить", "callback_data": "restore"}],
