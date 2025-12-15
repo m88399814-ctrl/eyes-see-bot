@@ -790,7 +790,8 @@ def api_chat():
             "type": mtype,
             "text": text,
             "token": token,
-            "time": dt.isoformat()
+            "time": dt.isoformat(),
+            "is_owner": sender_id == owner_id
         })
 
     return {
