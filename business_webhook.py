@@ -367,12 +367,10 @@ def webhook():
                 "Бот подключён 👁️",
                 {
                     "inline_keyboard": [
-                        [
-                            {
-                                "text": "⚙️ Настройки",
-                                "callback_data": "settings"
-                            }
-                        ]
+                        [{
+                            "text": "⚙️ Настройки",
+                            "callback_data": "settings"
+                        }]
                     ]
                 }
             )
@@ -686,7 +684,31 @@ def webhook():
 
         owner_id = (cq.get("from") or {}).get("id", 0)
         cd = cq.get("data") or ""
-        print("CALLBACK:", cd)
+        # ⚙️ НАСТРОЙКИ
+        if cd == "settings":
+            # 1️⃣ обязательно отвечаем Telegram
+            tg("answerCallbackQuery", {
+                "callback_query_id": cq["id"]
+            })
+    
+            # 2️⃣ удаляем сообщение с кнопкой
+            if chat_id and mid:
+                tg("deleteMessage", {
+                    "chat_id": chat_id,
+                    "message_id": mid
+                })
+    
+            # 3️⃣ показываем меню настроек (логика /settings)
+            send_text(
+                chat_id,
+                "⚙️ <b>Настройки</b>\n\n"
+                "• ♻️ Восстановление чатов\n"
+                "• 🗑 Логи сообщений\n"
+                "• 🌐 Web App\n"
+                "\n(меню можно расширить позже)"
+            )
+    
+            return "ok"
 
         # скрыть
         if cd.startswith("hide:"):
