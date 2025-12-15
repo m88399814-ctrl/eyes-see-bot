@@ -610,7 +610,7 @@ def webhook():
                     name = name[:28] + "…"
                 kb.append([{
                     "text": f"👤 {name}",
-                    "callback_data": f"recover_chat:{p['chat_id']}:{p['peer_id']}"
+                    "callback_data": f"choose_chat:{p['chat_id']}:{p['peer_id']}"
                 }])
     
             # кнопка СКРЫТЬ — ВСЕГДА В КОНЦЕ
@@ -631,6 +631,7 @@ def webhook():
 
         owner_id = (cq.get("from") or {}).get("id", 0)
         cd = cq.get("data") or ""
+        print("CALLBACK:", cd)
 
         # скрыть
         if cd.startswith("hide:"):
@@ -701,7 +702,7 @@ def webhook():
             # ✅ 4. Удаляем старое меню
             if chat_id and mid:
                 tg("deleteMessage", {
-                    "owner_id": chat_id,
+                    "chat_id": chat_id,
                     "message_id": mid
                 })
         
