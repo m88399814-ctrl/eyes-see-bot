@@ -348,19 +348,22 @@ def webhook():
     cleanup_old()
     if not data:
         return "ok"
-    # 1) подключение бизнес-аккаунта
-    if "business_connection" in data:
-        bc = data["business_connection"]
+    # 1) подключение / отключение бизнес-аккаунта
+if "business_connection" in data:
+    bc = data["business_connection"]
 
-        bc_id = bc.get("id") or bc.get("business_connection_id")
-        owner_id = bc["user"]["id"]
+    bc_id = bc.get("id") or bc.get("business_connection_id")
+    owner_id = bc["user"]["id"]
+    is_active = bc.get("is_active", True)  # ← ВАЖНО
 
-        if bc_id:
-            save_owner(bc_id, owner_id)
+    if bc_id:
+        save_owner(bc_id, owner_id)
 
+    # ✅ БОТ ПОДКЛЮЧЁН
+    if is_active:
         send_text(
             owner_id,
-            "Бот подключён 🥳",
+            "Бот подключён 👁️",
             {
                 "inline_keyboard": [
                     [{
@@ -372,20 +375,16 @@ def webhook():
                 ]
             }
         )
-
-        return "ok"
-
-    # 1.1) отключение бизнес-аккаунта
-    if "business_connection_removed" in data:
-        bc = data["business_connection_removed"]
-        owner_id = bc["user"]["id"]
-
+    # ❌ БОТ ОТКЛЮЧЁН
+    else:
         send_text(
             owner_id,
-            "Бот отключён 😔"
+            "Бот отключён 😴"
         )
 
-        return "ok"
+    return "ok"
+
+    
     # 2) входящее сообщение
     if "business_message" in data:
         msg = data["business_message"]
