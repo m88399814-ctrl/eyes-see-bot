@@ -768,28 +768,28 @@ def api_chat():
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT
-                sender_id,
-                sender_name,
-                msg_type,
-                text,
-                token,
-                created_at
-            FROM messages
-            WHERE owner_id = %s
-              AND chat_id = %s
-            ORDER BY created_at ASC
+                    sender_id,
+                    sender_name,
+                    msg_type,
+                    text,
+                    file_id,
+                    created_at
+                FROM messages
+                WHERE owner_id = %s
+                  AND chat_id = %s
+                ORDER BY created_at ASC
             """, (owner_id, chat_id))
 
             rows = cur.fetchall()
 
     messages = []
-    for sender_id, name, mtype, text, token, dt in rows:
+    for sender_id, name, mtype, text, file_id, dt in rows:
         messages.append({
             "sender_id": sender_id,
             "name": name,
             "type": mtype,
             "text": text,
-            "token": token,
+            "file_id": file_id,
             "time": dt.isoformat(),
             "is_owner": sender_id == owner_id
         })
