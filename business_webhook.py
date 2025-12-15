@@ -816,14 +816,16 @@ def api_file():
     if not file_id:
         return jsonify({"ok": False, "error": "file_id missing"}), 400
 
-    tg_resp = tg("getFile", {"file_id": file_id})
-
-    if not tg_resp or not tg_resp.get("ok"):
+    r = tg("getFile", {"file_id": file_id})
+    if not r.ok:
         return jsonify({"ok": False, "error": "getFile failed"}), 500
 
-    file_path = tg_resp["result"]["file_path"]
-    url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+    data = r.json()
+    if not data.get("ok") or "result" not in data or not data["result"].get("file_path"):
+        return jsonify({"ok": False, "error": "no file_path"}), 500
 
+    file_path = data["result"]["file_path"]
+    url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
     return redirect(url, code=302)
    
 # ================= START =================
