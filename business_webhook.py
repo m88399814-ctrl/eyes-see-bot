@@ -661,7 +661,7 @@ def webhook():
 
             kb.append([{"text": "✖️ Скрыть", "callback_data": "hide:menu"}])
             send_text(
-                chat_id,
+                owner_id,
                 "<b>Выбери чат, который хочешь восстановить:</b>",
                 {"inline_keyboard": kb}
             )
@@ -701,7 +701,7 @@ def webhook():
             # ✅ 4. Удаляем старое меню
             if chat_id and mid:
                 tg("deleteMessage", {
-                    "chat_id": chat_id,
+                    "owner_id": chat_id,
                     "message_id": mid
                 })
         
@@ -731,7 +731,7 @@ def webhook():
             # удаляем текущее меню
             if chat_id and mid:
                 tg("deleteMessage", {
-                    "chat_id": chat_id,
+                    "owner_id": chat_id,
                     "message_id": mid
                 })
         
