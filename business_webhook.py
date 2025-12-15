@@ -752,6 +752,11 @@ def webhook():
                 "<b>Выбери чат, который хочешь восстановить:</b>",
                 {"inline_keyboard": kb}
             )
+
+            tg("answerCallbackQuery", {
+                "callback_query_id": cq["id"]
+            })
+            
             return "ok"
         # === открыть чат (пока заглушка) ===
         if cd.startswith("open_chat:"):
