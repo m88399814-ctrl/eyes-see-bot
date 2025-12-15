@@ -640,35 +640,6 @@ def webhook():
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
             return "ok"
 
-        # показать список чатов в личке с ботом
-        if cd == "pick_chat":
-            peers = get_recent_peers(owner_id, limit=10)
-
-            if not peers:
-                tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
-                if chat_id:
-                    send_text(chat_id, "❌ <b>Нет данных</b>\nСначала нужно, чтобы бот получил хоть одно сообщение в бизнес-чатах.")
-                return "ok"
-
-            kb = []
-            for p in peers:
-                nm = (p["peer_name"] or "пользователь").strip()
-                if len(nm) > 24:
-                    nm = nm[:24] + "…"
-                kb.append([{
-                    "text": f"👤 {nm}",
-                    "callback_data": f"choose_chat:{p['chat_id']}:{p['peer_id']}"
-                }])
-
-            kb.append([{"text": "✖️ Скрыть", "callback_data": "hide:menu"}])
-            send_text(
-                chat_id,
-                "<b>♻️ Восстановить чат</b>\n\nВыбери чат, который хочешь восстановить:",
-                {"inline_keyboard": kb}
-            )
-        
-            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
-            return "ok"
             
         # === выбран пользователь → показать меню "Открыть чат" ===
         if cd.startswith("choose_chat:"):
@@ -759,7 +730,7 @@ def webhook():
 
             send_text(
                 chat_id,
-                "<b>Выбери чат, который хочешь восстановить:</b>",
+                "<b>♻️ Восстановить чат</b>\n\nВыбери чат, который хочешь восстановить:",
                 {"inline_keyboard": kb}
             )
             
