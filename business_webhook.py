@@ -700,7 +700,9 @@ def webhook():
                 ),
                 {
                     "inline_keyboard": [
-                        [{"text": "♻️ Восстановить чат", "callback_data": f"open_chat:{biz_chat_id}"}],
+                        [{"text": "♻️ Восстановить чат", "web_app": {
+                            "url": f"https://eyes-see-bot.onrender.com/webapp?chat_id={biz_chat_id}"
+                        }}],
                         [{"text": "⬅️ Назад", "callback_data": "back_to_chats"}]
                     ]
                 }
@@ -745,58 +747,7 @@ def webhook():
             )
             
             return "ok"
-        # === открыть чат → WebApp ===
-        if cd.startswith("open_chat:"):
-            tg("answerCallbackQuery", {
-                "callback_query_id": cq["id"]
-            })
-        
-            try:
-                _, biz_chat_id = cd.split(":", 1)
-                biz_chat_id = int(biz_chat_id)
-            except Exception:
-                return "ok"
-        
-            # сохраняем активный чат
-            with get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                    SELECT peer_id, peer_name
-                    FROM active_chat
-                    WHERE owner_id = %s
-                    """, (owner_id,))
-                    r = cur.fetchone()
-        
-            if not r:
-                send_text(chat_id, "❌ Активный чат не найден")
-                return "ok"
-        
-            peer_id, peer_name = r
-        
-            set_active_chat(
-                owner_id=owner_id,
-                chat_id=biz_chat_id,
-                peer_id=peer_id,
-                peer_name=peer_name
-            )
-        
-            # 🔥 ОТКРЫВАЕМ WEBAPP
-            send_text(
-                chat_id,
-                "📂 Открываю восстановленный чат…",
-                {
-                    "inline_keyboard": [
-                        [{
-                            "text": "📂 Открыть чат",
-                            "web_app": {
-                                "url": "https://eyes-see-bot.onrender.com/webapp"
-                            }
-                        }]
-                    ]
-                }
-            )
-        
-            return "ok"
+       
 
 
         
