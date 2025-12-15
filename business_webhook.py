@@ -354,13 +354,14 @@ def webhook():
     
         bc_id = bc.get("id") or bc.get("business_connection_id")
         owner_id = bc["user"]["id"]
-        is_active = bc.get("is_active", True)  # ← ВАЖНО
+    
+        # ВОТ ЭТО ПРАВИЛЬНОЕ ПОЛЕ:
+        is_enabled = bc.get("is_enabled", True)
     
         if bc_id:
             save_owner(bc_id, owner_id)
     
-        # ✅ БОТ ПОДКЛЮЧЁН
-        if is_active:
+        if is_enabled:
             send_text(
                 owner_id,
                 "Бот подключён 👁️",
@@ -368,19 +369,13 @@ def webhook():
                     "inline_keyboard": [
                         [{
                             "text": "⚙️ Настройки",
-                            "web_app": {
-                                "url": "https://eyes-see-bot.onrender.com/webapp"
-                            }
+                            "web_app": {"url": "https://eyes-see-bot.onrender.com/webapp"}
                         }]
                     ]
                 }
             )
-        # ❌ БОТ ОТКЛЮЧЁН
         else:
-            send_text(
-                owner_id,
-                "Бот отключён 😴"
-            )
+            send_text(owner_id, "Бот отключён 😔")
     
         return "ok"
 
