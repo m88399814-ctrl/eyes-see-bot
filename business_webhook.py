@@ -785,7 +785,11 @@ def api_chat():
         "messages": messages
     }
 
+# ================= WEB APP =================
 
+@app.route("/webapp")
+def webapp():
+    return open("webapp.html", encoding="utf-8").read()
    
 # ================= START =================
 
