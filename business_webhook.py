@@ -660,11 +660,20 @@ def webhook():
                 }])
 
             kb.append([{"text": "✖️ Скрыть", "callback_data": "hide:menu"}])
+            send_text(
+                chat_id,
+                "<b>Выбери чат, который хочешь восстановить:</b>",
+                {"inline_keyboard": kb}
+            )
+        
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+            return "ok"
+            
         # === выбран пользователь → показать меню "Открыть чат" ===
         if cd.startswith("choose_chat:"):
             try:
-                _, chat_id, peer_id = cd.split(":", 2)
-                chat_id = int(chat_id)
+                _, biz_chat_id, peer_id = cd.split(":",)
+                biz_chat_id = int(biz_chat_id)
                 peer_id = int(peer_id)
             except Exception:
                 tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
@@ -743,11 +752,7 @@ def webhook():
                 "<b>Выбери чат, который хочешь восстановить:</b>",
                 {"inline_keyboard": kb}
             )
-        
-            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
             return "ok"
-
-
         # === открыть чат (пока заглушка) ===
         if cd.startswith("open_chat:"):
             tg("answerCallbackQuery", {
@@ -755,6 +760,14 @@ def webhook():
                 "text": "🚧 Веб-чат скоро будет добавлен"
             })
             return "ok"
+
+
+        
+        tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+            return "ok"
+
+
+        
 
 
 
