@@ -804,6 +804,27 @@ def api_chat():
 @app.route("/webapp")
 def webapp():
     return open("webapp.html", encoding="utf-8").read()
+
+
+
+from flask import redirect, request, jsonify
+
+@app.route("/api/file", methods=["GET"])
+def api_file():
+    file_id = request.args.get("file_id")
+
+    if not file_id:
+        return jsonify({"ok": False, "error": "file_id missing"}), 400
+
+    tg_resp = tg("getFile", {"file_id": file_id})
+
+    if not tg_resp or not tg_resp.get("ok"):
+        return jsonify({"ok": False, "error": "getFile failed"}), 500
+
+    file_path = tg_resp["result"]["file_path"]
+    url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+
+    return redirect(url, code=302)
    
 # ================= START =================
 
