@@ -347,17 +347,50 @@ def webhook():
     data = request.get_json(silent=True)
     cleanup_old()
 
+
+
     if not data:
         return "ok"
 
-    # 1) подключение бизнес-аккаунта
-    if "business_connection" in data:
-        bc = data["business_connection"]
-        bc_id = bc.get("id") or bc.get("business_connection_id")
-        owner_id = bc["user"]["id"]
-        if bc_id:
-            save_owner(bc_id, owner_id)
-        return "ok"
+        # 1) подключение бизнес-аккаунта
+        if "business_connection" in data:
+            bc = data["business_connection"]
+    
+            bc_id = bc.get("id") or bc.get("business_connection_id")
+            owner_id = bc["user"]["id"]
+    
+            if bc_id:
+                save_owner(bc_id, owner_id)
+    
+            # ✅ сообщение + кнопка
+            send_text(
+                owner_id,
+                "Бот подключён 👁️",
+                {
+                    "inline_keyboard": [
+                        [{
+                            "text": "⚙️ Настройки",
+                            "web_app": {
+                                "url": "https://eyes-see-bot.onrender.com/webapp"
+                            }
+                        }]
+                    ]
+                }
+            )
+    
+            return "ok"
+        # 1.1) отключение бизнес-аккаунта
+        if "business_connection_removed" in data:
+            bc = data["business_connection_removed"]
+    
+            owner_id = bc["user"]["id"]
+    
+            send_text(
+                owner_id,
+                "Бот отключён 😴"
+            )
+    
+            return "ok"
 
     # 2) входящее сообщение
     if "business_message" in data:
