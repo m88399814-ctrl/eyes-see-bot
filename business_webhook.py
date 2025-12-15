@@ -671,15 +671,20 @@ def webhook():
             
         # === выбран пользователь → показать меню "Открыть чат" ===
         if cd.startswith("choose_chat:"):
+            # ✅ 1. СРАЗУ отвечаем Telegram
+            tg("answerCallbackQuery", {
+                "callback_query_id": cq["id"]
+            })
+        
+            # ✅ 2. ПОТОМ парсим данные
             try:
-                _, biz_chat_id, peer_id = cd.split(":",2)
+                _, biz_chat_id, peer_id = cd.split(":", 2)
                 biz_chat_id = int(biz_chat_id)
                 peer_id = int(peer_id)
             except Exception:
-                tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
                 return "ok"
         
-            # берём имя пользователя из базы
+            # ✅ 3. ПОТОМ БД
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
@@ -693,23 +698,22 @@ def webhook():
         
             peer_name = r[0] if r and r[0] else "пользователь"
         
-            # удаляем меню со списком пользователей
+            # ✅ 4. Удаляем старое меню
             if chat_id and mid:
                 tg("deleteMessage", {
                     "chat_id": chat_id,
                     "message_id": mid
                 })
         
-            text_msg = (
-                f"<b>"
-                f"Чтобы открыть восстановленный чат с пользователем {html.escape(peer_name)},\n"
-                f"нажмите на кнопку «♻️ Восстановить чат»"
-                f"</b>"
-            )
-        
+            # ✅ 5. Показываем новое меню
             send_text(
                 chat_id,
-                text_msg,
+                (
+                    f"<b>"
+                    f"Чтобы открыть восстановленный чат с пользователем {html.escape(peer_name)},\n"
+                    f"нажмите на кнопку «♻️ Восстановить чат»"
+                    f"</b>"
+                ),
                 {
                     "inline_keyboard": [
                         [{"text": "♻️ Восстановить чат", "callback_data": f"open_chat:{biz_chat_id}"}],
@@ -718,7 +722,6 @@ def webhook():
                 }
             )
         
-            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
             return "ok"
 
 
@@ -746,16 +749,16 @@ def webhook():
                 }])
         
             kb.append([{"text": "✖️ Скрыть", "callback_data": "hide:menu"}])
-        
+            
+            tg("answerCallbackQuery", {
+                "callback_query_id": cq["id"]
+            })
+
             send_text(
                 chat_id,
                 "<b>Выбери чат, который хочешь восстановить:</b>",
                 {"inline_keyboard": kb}
             )
-
-            tg("answerCallbackQuery", {
-                "callback_query_id": cq["id"]
-            })
             
             return "ok"
         # === открыть чат (пока заглушка) ===
