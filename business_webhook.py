@@ -421,8 +421,8 @@ def webhook():
             return "ok"
 
         # 2.2) Сообщения владельца не сохраняем
-        if sender.get("id") == owner_id:
-            return "ok"
+        #if sender.get("id") == owner_id:
+            #return "ok"
 
         # 2.3) Обычные сообщения собеседника -> сохраняем (для удалений)
         msg_type, file_id = media_from_message(msg)
