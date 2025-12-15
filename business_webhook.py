@@ -671,7 +671,15 @@ def webhook():
                     r = cur.fetchone()
         
             peer_name = r[0] if r and r[0] else "пользователь"
-        
+
+            # 🔥 ВОТ ЭТО ДОБАВИТЬ (ОБЯЗАТЕЛЬНО)
+            set_active_chat(
+                owner_id=owner_id,
+                chat_id=biz_chat_id,
+                peer_id=peer_id,
+                peer_name=peer_name
+            )
+            
             # ✅ 4. Удаляем старое меню
             if chat_id and mid:
                 tg("deleteMessage", {
