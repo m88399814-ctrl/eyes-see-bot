@@ -710,10 +710,9 @@ def webhook():
             send_text(
                 chat_id,
                 (
-                    f"<b>"
-                    f"Чтобы открыть восстановленный чат с пользователем {html.escape(peer_name)},\n"
+                    f"Чтобы восстановить чат с пользователем <b>{html.escape(peer_name)}</b>,\n"
                     f"нажмите на кнопку «♻️ Восстановить чат»"
-                    f"</b>"
+
                 ),
                 {
                     "inline_keyboard": [
@@ -732,7 +731,7 @@ def webhook():
             # удаляем текущее меню
             if chat_id and mid:
                 tg("deleteMessage", {
-                    "owner_id": chat_id,
+                    "chat_id": chat_id,
                     "message_id": mid
                 })
         
