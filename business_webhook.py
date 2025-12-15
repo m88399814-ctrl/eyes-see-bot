@@ -764,13 +764,10 @@ def webhook():
 
         
         tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
-            return "ok"
+        return "ok"
 
 
-        
-
-
-
+    
 # ================= START =================
 
 if __name__ == "__main__":
