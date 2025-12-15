@@ -468,6 +468,23 @@ def webhook():
         owner_id = get_owner(bc_id)
         if not owner_id:
             return "ok"
+
+
+
+
+        # ❌ НЕ показываем удаление сообщений владельца
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                SELECT sender_id
+                FROM messages
+                WHERE owner_id = %s AND message_id = ANY(%s)
+                LIMIT 1
+                """, (owner_id, mids))
+                r = cur.fetchone()
+        
+        if r and r[0] == owner_id:
+            return "ok"
         time.sleep(1)
 
         blocks = []
@@ -519,6 +536,13 @@ def webhook():
         owner_id = get_owner(bc_id)
         if not owner_id:
             return "ok"
+
+
+        # ❌ НЕ показываем изменения сообщений владельца
+        editor_id = ebm.get("from", {}).get("id")
+        if editor_id == owner_id:
+            return "ok"
+            
         time.sleep(1)
 
         mid = ebm.get("message_id")
