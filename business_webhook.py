@@ -683,7 +683,7 @@ def webhook():
             send_text(
                 chat_id,
                 (   
-                    f"👤 <b>Это {html.escape(peer_name)}</b> "
+                    f"👤 <b>{html.escape(peer_name)}</b> "
                     f"(id: <code>{peer_id}</code>)\n\n"
                     f"Здесь ты можешь восстановить чат "
                     f"(если он был удалён) или вернуться назад, "
@@ -751,7 +751,42 @@ def webhook():
         return "ok"
 
   
-    
+# ================= WEB APP API =================
+@app.route("/api/chat", methods=["GET"])
+def api_chat():
+    owner_id = request.args.get("owner_id", type=int)
+    chat_id = request.args.get("chat_id", type=int)
+
+    if not owner_id or not chat_id:
+        return {"ok": False, "error": "missing params"}
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT sender_name, msg_type, text, created_at
+                FROM messages
+                WHERE owner_id = %s AND chat_id = %s
+                ORDER BY created_at ASC
+            """, (owner_id, chat_id))
+
+            rows = cur.fetchall()
+
+    messages = []
+    for name, mtype, text, dt in rows:
+        messages.append({
+            "name": name,
+            "type": mtype,
+            "text": text,
+            "time": dt.isoformat()
+        })
+
+    return {
+        "ok": True,
+        "messages": messages
+    }
+
+
+   
 # ================= START =================
 
 if __name__ == "__main__":
