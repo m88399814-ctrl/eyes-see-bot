@@ -1,46 +1,59 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
   <title>Восстановленный чат</title>
 
-  <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
   <style>
     body {
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-      background: #0f0f0f;
+      font-family: sans-serif;
+      background: #0e0e0e;
       color: #fff;
       margin: 0;
+      padding: 0;
+    }
+
+    #chat {
       padding: 12px;
     }
 
-    h2 {
-      margin-top: 0;
-      font-size: 18px;
+    .msg {
+      margin: 8px;
+      padding: 10px;
+      border-radius: 10px;
+      max-width: 80%;
+      word-wrap: break-word;
     }
 
-    .msg {
-      padding: 10px;
-      border-bottom: 1px solid #222;
+    .me {
+      background: #2b5278;
+      margin-left: auto;
+      text-align: right;
+    }
+
+    .other {
+      background: #1e1e1e;
+      margin-right: auto;
     }
 
     .name {
-      color: #6cf;
-      font-weight: bold;
-      font-size: 14px;
-    }
-
-    .text {
-      margin-top: 4px;
-      white-space: pre-wrap;
+      font-size: 12px;
+      opacity: 0.7;
+      margin-bottom: 4px;
     }
 
     .time {
       font-size: 11px;
-      color: #999;
+      opacity: 0.4;
       margin-top: 4px;
+    }
+
+    .media {
+      color: #5cc8ff;
+      text-decoration: none;
+      font-weight: bold;
     }
   </style>
 </head>
@@ -50,42 +63,43 @@
   <div id="chat">Загрузка…</div>
 
   <script>
-    const tg = window.Telegram.WebApp;
-    tg.expand();
-
-    const user = tg.initDataUnsafe?.user;
-    const params = new URLSearchParams(window.location.search);
-
-    const chatId = params.get("chat_id");
-
-    if (!user || !chatId) {
-      document.getElementById("chat").innerText = "❌ Нет данных";
-    } else {
-      fetch(`/api/chat?owner_id=${user.id}&chat_id=${chatId}`)
-        .then(r => r.json())
-        .then(d => {
-          if (!d.ok) {
-            document.getElementById("chat").innerText = "❌ Не удалось загрузить чат";
-            return;
-          }
-
-          const el = document.getElementById("chat");
-          el.innerHTML = "";
-
-          d.messages.forEach(m => {
-            const div = document.createElement("div");
-            div.className = "msg";
-
-            div.innerHTML = `
-              <div class="name">${m.name}</div>
-              <div class="text">${m.text || ""}</div>
-              <div class="time">${new Date(m.time).toLocaleString()}</div>
-            `;
-
-            el.appendChild(div);
-          });
-        });
-    }
+  const tg = window.Telegram.WebApp;
+  tg.expand();
+  
+  const userId = tg.initDataUnsafe.user.id;
+  
+  fetch(`/api/chat?owner_id=${userId}&chat_id=${tg.initDataUnsafe.start_param}`)
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) return;
+  
+      const el = document.getElementById("chat");
+      el.innerHTML = "";
+  
+      d.messages.forEach(m => {
+        const isMine = m.sender_id === userId;
+  
+        let html = <div class="msg ${isMine ? 'me' : 'other'}">;
+        html += <div class="name">${m.name}</div>;
+  
+        if (m.type === "text") {
+          html += <div class="text">${m.text || ""}</div>;
+        } else {
+          html += `
+            <a class="media"
+               href="https://t.me/EyesSeeBot?start=${m.token}"
+               target="_blank">
+               📎 ${m.type}
+            </a>
+          `;
+        }
+  
+        html += <div class="time">${new Date(m.time).toLocaleString()}</div>;
+        html += </div>;
+  
+        el.innerHTML += html;
+      });
+    });
   </script>
 
 </body>
