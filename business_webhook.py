@@ -12,7 +12,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 BOT_USERNAME = "EyesSeeBot"  # без @
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", static_url_path="/static")
 
 # Словарь для хранения последнего известного текста сообщений (ключ: (owner_id, message_id))
 message_history = {}
