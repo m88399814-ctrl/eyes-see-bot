@@ -610,7 +610,7 @@ def webhook():
                     name = name[:28] + "…"
                 kb.append([{
                     "text": f"👤 {name}",
-                    "callback_data": f"recover_chat:{p['chat_id']}:{p['peer_id']}"
+                    "callback_data": f"choose_chat:{p['chat_id']}:{p['peer_id']}"
                 }])
     
             # кнопка СКРЫТЬ — ВСЕГДА В КОНЦЕ
@@ -618,10 +618,12 @@ def webhook():
     
             send_text(
                 chat_id,
-                "<b>Выбери чат, который хочешь восстановить:</b>",
+                "<b>♻️ Восстановить чат</b>\n\nВыбери чат, который хочешь восстановить:",
                 {"inline_keyboard": kb}
             )
             return "ok"
+
+        return "ok"
     # 6) callback-кнопки
     if "callback_query" in data:
         cq = data["callback_query"]
@@ -631,6 +633,7 @@ def webhook():
 
         owner_id = (cq.get("from") or {}).get("id", 0)
         cd = cq.get("data") or ""
+        print("CALLBACK:", cd)
 
         # скрыть
         if cd.startswith("hide:"):
@@ -639,53 +642,23 @@ def webhook():
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
             return "ok"
 
-        # показать список чатов в личке с ботом
-        if cd == "pick_chat":
-            peers = get_recent_peers(owner_id, limit=10)
-
-            if not peers:
-                tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
-                if chat_id:
-                    send_text(chat_id, "❌ <b>Нет данных</b>\nСначала нужно, чтобы бот получил хоть одно сообщение в бизнес-чатах.")
-                return "ok"
-
-            kb = []
-            for p in peers:
-                nm = (p["peer_name"] or "пользователь").strip()
-                if len(nm) > 24:
-                    nm = nm[:24] + "…"
-                kb.append([{
-                    "text": f"👤 {nm}",
-                    "callback_data": f"set_chat:{p['chat_id']}:{p['peer_id']}"
-                }])
-
-            kb.append([{"text": "✖️ Скрыть", "callback_data": "hide:menu"}])
-
-            if chat_id:
-                send_text(
-                    chat_id,
-                    "<b>Выбери чат</b> (это увидишь только ты, это в личке с ботом):",
-                    {"inline_keyboard": kb}
-                )
-
-            # можно удалить старое меню, чтобы было чисто
-            if chat_id and mid:
-                tg("deleteMessage", {"chat_id": chat_id, "message_id": mid})
-
-            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
-            return "ok"
-
-        # установить выбранный чат
-        if cd.startswith("set_chat:"):
+            
+        # === выбран пользователь → показать меню "Открыть чат" ===
+        if cd.startswith("choose_chat:"):
+            # ✅ 1. СРАЗУ отвечаем Telegram
+            tg("answerCallbackQuery", {
+                "callback_query_id": cq["id"]
+            })
+        
+            # ✅ 2. ПОТОМ парсим данные
             try:
-                _, c_id, p_id = cd.split(":", 2)
-                c_id = int(c_id)
-                p_id = int(p_id)
+                _, biz_chat_id, peer_id = cd.split(":", 2)
+                biz_chat_id = int(biz_chat_id)
+                peer_id = int(peer_id)
             except Exception:
-                tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
                 return "ok"
-
-            # имя берём из базы (самое свежее по этому chat_id)
+        
+            # ✅ 3. ПОТОМ БД
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
@@ -694,27 +667,91 @@ def webhook():
                     WHERE owner_id = %s AND chat_id = %s AND sender_id = %s
                     ORDER BY created_at DESC
                     LIMIT 1
-                    """, (owner_id, c_id, p_id))
+                    """, (owner_id, biz_chat_id, peer_id))
                     r = cur.fetchone()
-
-            nm = r[0] if r and r[0] else "пользователь"
-            set_active_chat(owner_id, c_id, p_id, nm)
-
-            # удаляем сообщение с кнопками — чтобы было “секретно”
+        
+            peer_name = r[0] if r and r[0] else "пользователь"
+        
+            # ✅ 4. Удаляем старое меню
             if chat_id and mid:
-                tg("deleteMessage", {"chat_id": chat_id, "message_id": mid})
+                tg("deleteMessage", {
+                    "chat_id": chat_id,
+                    "message_id": mid
+                })
+        
+            # ✅ 5. Показываем новое меню
+            send_text(
+                chat_id,
+                (   
+                    f"👤 <b>Это {html.escape(peer_name)}</b> "
+                    f"(id: <code>{peer_id}</code>)\n\n"
+                    f"Здесь ты можешь восстановить чат "
+                    f"(если он был удалён) или вернуться назад, "
+                    f"чтобы выбрать другого пользователя."
 
-            tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "✅ Выбрано"})
+                ),
+                {
+                    "inline_keyboard": [
+                        [{"text": "♻️ Восстановить чат", "callback_data": f"open_chat:{biz_chat_id}"}],
+                        [{"text": "⬅️ Назад", "callback_data": "back_to_chats"}]
+                    ]
+                }
+            )
+        
             return "ok"
 
-        # остальные кнопки пока просто скрываем (не ломаем логику)
-        if chat_id and mid:
-            tg("deleteMessage", {"chat_id": chat_id, "message_id": mid})
+
+
+        # === назад к списку пользователей ===
+        if cd == "back_to_chats":
+            # удаляем текущее меню
+            if chat_id and mid:
+                tg("deleteMessage", {
+                    "chat_id": chat_id,
+                    "message_id": mid
+                })
+        
+            # имитируем повторный вызов pick_chat
+            peers = get_recent_peers(owner_id, limit=10)
+        
+            kb = []
+            for p in peers:
+                nm = (p["peer_name"] or "пользователь").strip()
+                if len(nm) > 24:
+                    nm = nm[:24] + "…"
+                kb.append([{
+                    "text": f"👤 {nm}",
+                    "callback_data": f"choose_chat:{p['chat_id']}:{p['peer_id']}"
+                }])
+        
+            kb.append([{"text": "✖️ Скрыть", "callback_data": "hide:menu"}])
+            
+            tg("answerCallbackQuery", {
+                "callback_query_id": cq["id"]
+            })
+
+            send_text(
+                chat_id,
+                "<b>♻️ Восстановить чат</b>\n\nВыбери чат, который хочешь восстановить:",
+                {"inline_keyboard": kb}
+            )
+            
+            return "ok"
+        # === открыть чат (пока заглушка) ===
+        if cd.startswith("open_chat:"):
+            tg("answerCallbackQuery", {
+                "callback_query_id": cq["id"],
+                "text": "🚧 Веб-чат скоро будет добавлен"
+            })
+            return "ok"
+
+
+        
         tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         return "ok"
 
-    return "ok"
-
+  
+    
 # ================= START =================
 
 if __name__ == "__main__":
