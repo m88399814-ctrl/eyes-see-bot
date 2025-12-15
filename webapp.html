@@ -8,17 +8,37 @@
   <style>
     body { background:#0e0e0e; color:#fff; margin:0 }
     #chat { padding:12px }
-    .msg { margin:8px; padding:10px; border-radius:10px; max-width:80% }
+    .msg {
+      margin:12px;
+      padding:18px;
+      border-radius:14px;
+      max-width:80%;
+      font-size:22px;   /* ← ТЕКСТ СООБЩЕНИЙ */
+      line-height:1.4;
+    }
     .me { background:#2b5278; margin-left:auto; text-align:right }
     .other { background:#1e1e1e }
-    .name { font-size:12px; opacity:.6 }
-    .time { font-size:11px; opacity:.4 }
-    .media { color:#5cc8ff; font-weight:bold }
+    .name {
+      font-size:20px;   /* ← ИМЯ */
+      font-weight:600;
+      opacity:.85;
+      margin-bottom:6px;
+    }
+    .time {
+      font-size:16px;   /* ← ВРЕМЯ */
+      opacity:.5;
+      margin-top:6px;
+    }
+    .media {
+      color:#5cc8ff;
+      font-weight:bold;
+      font-size:22px;   /* ← МЕДИА */
+    }
   </style>
 </head>
 
 <body>
-<h2>📂 Восстановленный чат</h2>
+<h2 style="font-size:28px; padding:12px;">📂 Восстановленный чат</h2>
 <div id="chat">Загрузка…</div>
 
 <script>
