@@ -43,10 +43,18 @@ fetch(`/api/chat?owner_id=${userId}&chat_id=${chatId}`)
           <div class="name">${m.name}</div>
       `;
 
-      if (m.type === "text") {
-        html += `<div>${m.text || ""}</div>`;
-      } else {
-        html += `<div class="media">📎 ${m.type}</div>`;
+      else {
+        if (!m.file_id) {
+          html += `<div class="media">❌ файл недоступен</div>`;
+        } else {
+          html += `
+            <a class="media"
+               href="/api/file?file_id=${m.file_id}"
+               target="_blank">
+               📎 ${m.type}
+            </a>
+          `;
+        }
       }
 
       html += `<div class="time">${new Date(m.time).toLocaleString()}</div></div>`;
