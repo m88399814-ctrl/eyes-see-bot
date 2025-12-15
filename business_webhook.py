@@ -375,7 +375,7 @@ def webhook():
                 }
             )
         else:
-            send_text(owner_id, "Бот отключён 😔")
+            send_text(owner_id, "Бот отключён 😴")
     
         return "ok"
 
