@@ -464,11 +464,14 @@ def webhook():
     # 3) удаление сообщений (группировка 1 сек)
     if "deleted_business_messages" in data:
         dbm = data["deleted_business_messages"]
+        mids = dbm.get("message_ids", [])
+        if not mids:
+            return "ok"
         bc_id = dbm.get("business_connection_id")
         owner_id = get_owner(bc_id)
         if not owner_id:
             return "ok"
-
+        
 
 
 
@@ -532,6 +535,9 @@ def webhook():
     # 4) изменение сообщений (группировка 1 сек)
     if "edited_business_message" in data:
         ebm = data["edited_business_message"]
+        mid = ebm.get("message_id")
+        if not mid:
+            return "ok"
         bc_id = ebm.get("business_connection_id")
         owner_id = get_owner(bc_id)
         if not owner_id:
