@@ -368,8 +368,7 @@ def webhook():
                 {
                     "inline_keyboard": [
                         [{
-                            "text": "⚙️ Настройки",
-                            "web_app": {"url": "https://eyes-see-bot.onrender.com/webapp"}
+                            "text": "⚙️ Настройки"
                         }]
                     ]
                 }
