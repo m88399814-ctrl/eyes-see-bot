@@ -36,7 +36,7 @@ fetch(`/api/chat?owner_id=${userId}&chat_id=${chatId}`)
     el.innerHTML = "";
 
     d.messages.forEach(m => {
-      const isMine = m.sender_id == userId;
+      const isMine = m.is_owner === true;
 
       let html = `
         <div class="msg ${isMine ? "me" : "other"}">
