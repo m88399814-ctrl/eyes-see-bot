@@ -662,7 +662,7 @@ def webhook():
 
             kb.append([{"text": "✖️ Скрыть", "callback_data": "hide:menu"}])
             send_text(
-                owner_id,
+                chat_id,
                 "<b>♻️ Восстановить чат</b>\n\nВыбери чат, который хочешь восстановить:",
                 {"inline_keyboard": kb}
             )
