@@ -712,7 +712,7 @@ def webhook():
                 text_msg,
                 {
                     "inline_keyboard": [
-                        [{"text": "♻️ Восстановить чат", "callback_data": f"open_chat:{chat_id}"}],
+                        [{"text": "♻️ Восстановить чат", "callback_data": f"open_chat:{biz_chat_id}"}],
                         [{"text": "⬅️ Назад", "callback_data": "back_to_chats"}]
                     ]
                 }
