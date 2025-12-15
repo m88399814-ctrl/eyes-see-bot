@@ -32,6 +32,11 @@ const userId = tg.initDataUnsafe.user.id;
 fetch(`/api/chat?owner_id=${userId}&chat_id=${chatId}`)
   .then(r => r.json())
   .then(d => {
+    if (!d.ok) {
+      document.getElementById("chat").innerHTML = "❌ Ошибка загрузки";
+      return;
+    }
+
     const el = document.getElementById("chat");
     el.innerHTML = "";
 
@@ -40,10 +45,12 @@ fetch(`/api/chat?owner_id=${userId}&chat_id=${chatId}`)
 
       let html = `
         <div class="msg ${isMine ? "me" : "other"}">
-          <div class="name">${m.name}</div>
+          <div class="name">${m.name || ""}</div>
       `;
 
-      else {
+      if (m.type === "text") {
+        html += `<div>${m.text || ""}</div>`;
+      } else {
         if (!m.file_id) {
           html += `<div class="media">❌ файл недоступен</div>`;
         } else {
@@ -60,6 +67,10 @@ fetch(`/api/chat?owner_id=${userId}&chat_id=${chatId}`)
       html += `<div class="time">${new Date(m.time).toLocaleString()}</div></div>`;
       el.insertAdjacentHTML("beforeend", html);
     });
+  })
+  .catch(err => {
+    document.getElementById("chat").innerHTML = "❌ JS ошибка";
+    console.error(err);
   });
 </script>
 </body>
