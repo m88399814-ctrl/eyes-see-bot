@@ -672,7 +672,7 @@ def webhook():
         # === выбран пользователь → показать меню "Открыть чат" ===
         if cd.startswith("choose_chat:"):
             try:
-                _, biz_chat_id, peer_id = cd.split(":",)
+                _, biz_chat_id, peer_id = cd.split(":",2)
                 biz_chat_id = int(biz_chat_id)
                 peer_id = int(peer_id)
             except Exception:
@@ -688,7 +688,7 @@ def webhook():
                     WHERE owner_id = %s AND chat_id = %s AND sender_id = %s
                     ORDER BY created_at DESC
                     LIMIT 1
-                    """, (owner_id, chat_id, peer_id))
+                    """, (owner_id, biz_chat_id, peer_id))
                     r = cur.fetchone()
         
             peer_name = r[0] if r and r[0] else "пользователь"
