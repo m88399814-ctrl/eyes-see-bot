@@ -629,8 +629,74 @@ def webhook():
             parts = text.split(maxsplit=1)
             cmd = parts[0]
             payload = parts[1].strip() if len(parts) > 1 else ""
-    
+            
+                    # если команда адресована другому боту — игнор
             if "@" in cmd and cmd != f"/start@{BOT_USERNAME}":
+                return "ok"
+    
+            # =========================
+            # /start БЕЗ токена
+            # =========================
+            if not payload:
+                # проверяем: подключён ли бот к Telegram Business
+                if is_owner_active(owner_id):
+                    send_text(
+                        chat_id,
+                        "Бот работает, подключение есть,\nя готов запоминать сообщения 👁️",
+                        {
+                            "inline_keyboard": [[
+                                {"text": "⚙️ Настройки", "callback_data": "settings"}
+                            ]]
+                        }
+                    )
+                else:
+                    send_text(
+                        chat_id,
+                        (
+                            "<b>Для работы бота нужно подключить его к аккаунту 😔</b>\n\n"
+                            "Настройки → <b>Telegram для бизнеса</b> → <b>Чат-боты</b>\n"
+                            "Вписывай <code>EyesSeeBot</code> → Готово!"
+                        ),
+                        {
+                            "inline_keyboard": [[
+                                {
+                                    "text": "📋 Скопировать",
+                                    "callback_data": "copy_bot_name"
+                                }
+                            ]]
+                        }
+                    )
+                return "ok"
+    
+            # =========================
+            # /start <token>
+            # =========================
+            if payload and re.fullmatch(r"[0-9a-f]{10}", payload):
+                tg("deleteMessage", {
+                    "chat_id": chat_id,
+                    "message_id": msg["message_id"]
+                })
+    
+                token = payload
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                        SELECT msg_type, file_id
+                        FROM messages
+                        WHERE owner_id = %s AND token = %s
+                        """, (owner_id, token))
+                        r = cur.fetchone()
+    
+                if not r:
+                    send_text(
+                        chat_id,
+                        "❌ <b>Не получилось открыть файл</b> 😔\n"
+                        "Возможно он был отправлен слишком давно"
+                    )
+                    return "ok"
+    
+                msg_type, file_id = r
+                send_media(chat_id, msg_type, file_id, token)
                 return "ok"
         
             # ✅ /start БЕЗ токена — показать главное меню
@@ -668,7 +734,7 @@ def webhook():
                 msg_type, file_id = r
                 send_media(chat_id, msg_type, file_id, token)
                 return "ok"
-    
+        
         # /recover — выбор чата для восстановления
         if text == "/recover" or text == f"/recover@{BOT_USERNAME}":
             tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
