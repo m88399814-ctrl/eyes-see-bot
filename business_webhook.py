@@ -29,7 +29,8 @@ def init_db():
             cur.execute("""
             CREATE TABLE IF NOT EXISTS owners (
                 business_connection_id TEXT PRIMARY KEY,
-                owner_id BIGINT NOT NULL
+                owner_id BIGINT NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE
             )
             """)
 
@@ -85,15 +86,17 @@ def cleanup_old():
             """)
         conn.commit()
 
-def save_owner(bc_id: str, owner_id: int):
+def save_owner(bc_id: str, owner_id: int, is_active: bool = True):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-            INSERT INTO owners (business_connection_id, owner_id)
-            VALUES (%s, %s)
+            INSERT INTO owners (business_connection_id, owner_id, is_active)
+            VALUES (%s, %s, %s)
             ON CONFLICT (business_connection_id)
-            DO UPDATE SET owner_id = EXCLUDED.owner_id
-            """, (bc_id, owner_id))
+            DO UPDATE SET
+                owner_id = EXCLUDED.owner_id,
+                is_active = EXCLUDED.is_active
+            """, (bc_id, owner_id, is_active))
         conn.commit()
 
 def get_owner(bc_id: str):
@@ -105,6 +108,19 @@ def get_owner(bc_id: str):
             """, (bc_id,))
             r = cur.fetchone()
             return r[0] if r else None
+
+def is_owner_active(owner_id: int) -> bool:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT is_active
+            FROM owners
+            WHERE owner_id = %s
+            ORDER BY is_active DESC
+            LIMIT 1
+            """, (owner_id,))
+            r = cur.fetchone()
+            return bool(r[0]) if r else False
 
 def set_active_chat(owner_id: int, chat_id: int, peer_id: int, peer_name: str):
     with get_db() as conn:
@@ -382,12 +398,12 @@ def webhook():
     
         bc_id = bc.get("id") or bc.get("business_connection_id")
         owner_id = bc["user"]["id"]
-    
+
         # ВОТ ЭТО ПРАВИЛЬНОЕ ПОЛЕ:
         is_enabled = bc.get("is_enabled", True)
     
         if bc_id:
-            save_owner(bc_id, owner_id)
+            save_owner(bc_id, owner_id, True)
     
         if is_enabled:
             send_text(
@@ -654,6 +670,7 @@ def webhook():
             if not payload:
                 # проверяем: подключён ли бот к Telegram Business
                 if is_owner_active(owner_id):
+                    setup_menu()
                     send_text(
                         chat_id,
                         "Бот работает, подключение есть,\nя готов запоминать сообщения 👁️",
