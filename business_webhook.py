@@ -632,7 +632,13 @@ def webhook():
     
             if "@" in cmd and cmd != f"/start@{BOT_USERNAME}":
                 return "ok"
-    
+            send_text(
+                chat_id,
+                "👁️ Бот запущен\n\nНажми кнопку «Меню» снизу 👇",
+                {
+                    "remove_keyboard": True
+                }
+            )
             # ✅ /start БЕЗ токена — показать главное меню
             setup_menu()
         
