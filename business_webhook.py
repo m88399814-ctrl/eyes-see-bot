@@ -124,14 +124,13 @@ def is_owner_active(owner_id: int) -> bool:
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-            SELECT is_active
+            SELECT 1
             FROM owners
             WHERE owner_id = %s
-            ORDER BY is_active DESC
+              AND is_active = TRUE
             LIMIT 1
             """, (owner_id,))
-            r = cur.fetchone()
-            return bool(r[0]) if r else False
+            return cur.fetchone() is not None
 
 def set_active_chat(owner_id: int, chat_id: int, peer_id: int, peer_name: str):
     with get_db() as conn:
