@@ -339,6 +339,20 @@ def label_for(msg_type: str) -> str:
         "document": "📎 Файл",
         "text": "💬 Сообщение"
     }.get(msg_type, "📎 Файл")
+def main_menu():
+    return {
+        "keyboard": [
+            [
+                {"text": "🔄 Перезапустить"},
+                {"text": "⚙️ Настройки"}
+            ],
+            [
+                {"text": "🆘 Поддержка"}
+            ]
+        ],
+        "resize_keyboard": True,
+        "persistent": True
+    }
 
 # ================= WEBHOOK =================
 
@@ -603,25 +617,35 @@ def webhook():
         send_text(owner_id, title + body_old + body_new + who)
         return "ok"
 
+  
     # 5) /start и /start TOKEN (в личке с ботом)
     if "message" in data:
         msg = data["message"]
         owner_id = msg["from"]["id"]
         text = (msg.get("text") or "").strip()
         chat_id = msg["chat"]["id"]
-
+    
         if text.startswith("/start"):
             parts = text.split(maxsplit=1)
             cmd = parts[0]
             payload = parts[1].strip() if len(parts) > 1 else ""
-
+    
             if "@" in cmd and cmd != f"/start@{BOT_USERNAME}":
                 return "ok"
-
-            # /start <token>
+    
+            # ✅ /start БЕЗ токена — показать главное меню
+            if not payload:
+                send_text(
+                    chat_id,
+                    "👁️ <b>Бот запущен</b>\n\nВыбери действие:",
+                    main_menu()
+                )
+                return "ok"
+    
+            # ✅ /start <token> — ТВОЯ СТАРАЯ ЛОГИКА (НЕ ТРОГАЛ)
             if payload and re.fullmatch(r"[0-9a-f]{10}", payload):
                 tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
-
+    
                 token = payload
                 with get_db() as conn:
                     with conn.cursor() as cur:
@@ -631,7 +655,7 @@ def webhook():
                         WHERE owner_id = %s AND token = %s
                         """, (owner_id, token))
                         r = cur.fetchone()
-
+    
                 if not r:
                     send_text(
                         chat_id,
@@ -640,10 +664,12 @@ def webhook():
                         hide_markup("error")
                     )
                     return "ok"
-
+    
                 msg_type, file_id = r
                 send_media(chat_id, msg_type, file_id, token)
                 return "ok"
+    
+        return "ok"
         # /recover — выбор чата для восстановления
         if text == "/recover" or text == f"/recover@{BOT_USERNAME}":
             tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
