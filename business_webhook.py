@@ -713,7 +713,7 @@ def webhook():
                         (
                             "<b>Для работы бота нужно подключить его к аккаунту:</b>\n\n"
                             "Настройки → Telegram для бизнеса → Чат-боты\n"
-                            "Вписывай <code>EyesSeeBot</code> → Готово!"
+                            "Копируй и вставляй <code>EyesSeeBot</code> → Готово!"
                         ),
                         {
                             "inline_keyboard": [[
