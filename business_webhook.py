@@ -712,8 +712,8 @@ def webhook():
                         CONNECT_PHOTO_URL,
                         (
                             "<b>Для работы бота нужно подключить его к аккаунту:</b>\n\n"
-                            "Копируй → Настройки → Telegram для бизнеса → Чат-боты\n"
-                            "Вставляй <code>EyesSeeBot</code> → Готово!"
+                            "Настройки → Telegram для бизнеса → Чат-боты\n"
+                            "Вставь <code>EyesSeeBot</code> → Готово!"
                         ),
                         {
                             "inline_keyboard": [[
