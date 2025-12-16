@@ -717,7 +717,10 @@ def webhook():
                         ),
                         {
                             "inline_keyboard": [[
-                                {"text": "📋 Скопировать", "callback_data": "copy_bot_name"}
+                                {
+                                  "text": "📋 Скопировать",
+                                  "web_app": { "url": "https://eyes-see-bot.onrender.com/static/copy.html" }
+                                }
                             ]]
                         }
                     )
