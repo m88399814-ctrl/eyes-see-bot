@@ -33,7 +33,18 @@ def init_db():
                 is_active BOOLEAN DEFAULT TRUE
             )
             """)
-
+            cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='owners' AND column_name='is_active'
+                ) THEN
+                    ALTER TABLE owners ADD COLUMN is_active BOOLEAN DEFAULT TRUE;
+                END IF;
+            END $$;
+            """)
             # Таблица сообщений
             cur.execute("""
             CREATE TABLE IF NOT EXISTS messages (
