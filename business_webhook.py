@@ -212,6 +212,16 @@ def send_text(chat_id, text, markup=None):
     if markup:
         data["reply_markup"] = markup
     tg("sendMessage", data)
+def send_photo(chat_id, photo_url, caption, markup=None):
+    data = {
+        "chat_id": chat_id,
+        "photo": photo_url,
+        "caption": caption,
+        "parse_mode": "HTML"
+    }
+    if markup:
+        data["reply_markup"] = markup
+    tg("sendPhoto", data)
 
 def hide_markup(token: str):
     return {
@@ -699,6 +709,7 @@ def webhook():
                 else:
                     send_text(
                         chat_id,
+                        CONNECT_PHOTO_URL,
                         (
                             "<b>Для работы бота нужно подключить его к аккаунту:</b>\n\n"
                             "Настройки → Telegram для бизнеса → Чат-боты<\n"
