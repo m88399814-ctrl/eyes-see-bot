@@ -632,13 +632,7 @@ def webhook():
     
             if "@" in cmd and cmd != f"/start@{BOT_USERNAME}":
                 return "ok"
-            send_text(
-                chat_id,
-                "👁️ Бот запущен\n\nНажми кнопку «Меню» снизу 👇",
-                {
-                    "remove_keyboard": True
-                }
-            )
+        
             # ✅ /start БЕЗ токена — показать главное меню
             setup_menu()
         
@@ -675,7 +669,6 @@ def webhook():
                 send_media(chat_id, msg_type, file_id, token)
                 return "ok"
     
-        return "ok"
         # /recover — выбор чата для восстановления
         if text == "/recover" or text == f"/recover@{BOT_USERNAME}":
             tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
