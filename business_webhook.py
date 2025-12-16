@@ -339,21 +339,21 @@ def label_for(msg_type: str) -> str:
         "document": "📎 Файл",
         "text": "💬 Сообщение"
     }.get(msg_type, "📎 Файл")
-def main_menu():
-    return {
-        "keyboard": [
-            [
-                {"text": "🔄 Перезапустить"},
-                {"text": "⚙️ Настройки"}
-            ],
-            [
-                {"text": "🆘 Поддержка"}
-            ]
-        ],
-        "resize_keyboard": True,
-        "persistent": True
-    }
 
+def setup_menu():
+    tg("setChatMenuButton", {
+        "menu_button": {
+            "type": "commands"
+        }
+    })
+
+    tg("setMyCommands", {
+        "commands": [
+            {"command": "start", "description": "🔄 Перезапустить бота"},
+            {"command": "settings", "description": "⚙️ Настройки"},
+            {"command": "help", "description": "🆘 Поддержка"}
+        ]
+    })
 # ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
@@ -641,7 +641,7 @@ def webhook():
                     main_menu()
                 )
                 return "ok"
-    
+            
             # ✅ /start <token> — ТВОЯ СТАРАЯ ЛОГИКА (НЕ ТРОГАЛ)
             if payload and re.fullmatch(r"[0-9a-f]{10}", payload):
                 tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
