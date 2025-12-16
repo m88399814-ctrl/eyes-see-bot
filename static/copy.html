@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Copy</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body { font-family: system-ui; padding: 16px; }
+    button { font-size: 18px; padding: 12px 16px; }
+  </style>
+</head>
+<body>
+  <button id="btn">📋 Скопировать</button>
+
+  <script>
+    const text = "EyesSeeBot";
+
+    async function doCopy() {
+      try {
+        // iOS/Android обычно ок
+        await navigator.clipboard.writeText(text);
+
+        if (window.Telegram?.WebApp) {
+          Telegram.WebApp.showPopup({ title: "Готово", message: "Скопировано ✅", buttons: [{type:"ok"}] });
+          setTimeout(() => Telegram.WebApp.close(), 600);
+        } else {
+          alert("Скопировано ✅");
+          window.close();
+        }
+      } catch (e) {
+        // запасной вариант, если clipboard заблочен
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+
+        if (window.Telegram?.WebApp) Telegram.WebApp.close();
+      }
+    }
+
+    document.getElementById("btn").addEventListener("click", doCopy);
+
+    // авто-копирование сразу при открытии (можно убрать если не хочешь)
+    // doCopy();
+  </script>
+</body>
+</html>
