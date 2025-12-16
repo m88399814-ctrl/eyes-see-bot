@@ -370,20 +370,7 @@ def setup_menu():
             {"command": "help", "description": "🆘 Поддержка"}
         ]
     })
-def is_owner_active(owner_id: int) -> bool:
-    """
-    Проверяем, есть ли активное подключение Telegram Business
-    для этого владельца
-    """
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-            SELECT 1
-            FROM owners
-            WHERE owner_id = %s
-            LIMIT 1
-            """, (owner_id,))
-            return cur.fetchone() is not None
+
 # ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
@@ -403,7 +390,7 @@ def webhook():
         is_enabled = bc.get("is_enabled", True)
     
         if bc_id:
-            save_owner(bc_id, owner_id, True)
+            save_owner(bc_id, owner_id, is_enabled)
     
         if is_enabled:
             send_text(
