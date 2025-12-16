@@ -399,8 +399,27 @@ def webhook():
         # ВОТ ЭТО ПРАВИЛЬНОЕ ПОЛЕ:
         is_enabled = bc.get("is_enabled", True)
     
-        if bc_id:
-            save_owner(bc_id, owner_id, is_enabled)
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                # если отключили — выключаем ВСЁ для этого owner
+                if not is_enabled:
+                    cur.execute("""
+                        UPDATE owners
+                        SET is_active = FALSE
+                        WHERE owner_id = %s
+                    """, (owner_id,))
+        
+                # текущее подключение пишем как есть
+                cur.execute("""
+                    INSERT INTO owners (business_connection_id, owner_id, is_active)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (business_connection_id)
+                    DO UPDATE SET
+                        owner_id = EXCLUDED.owner_id,
+                        is_active = EXCLUDED.is_active
+                """, (bc_id, owner_id, is_enabled))
+        
+            conn.commit()
     
         if is_enabled:
             send_text(
