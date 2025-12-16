@@ -709,7 +709,7 @@ def webhook():
                         }
                     )
                 else:
-                    send_text(
+                    send_photo(
                         chat_id,
                         CONNECT_PHOTO_URL,
                         (
