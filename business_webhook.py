@@ -47,6 +47,24 @@ def init_db():
                 END IF;
             END $$;
             """)
+            cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='owners' AND column_name='deleted_enabled'
+                ) THEN
+                    ALTER TABLE owners ADD COLUMN deleted_enabled BOOLEAN DEFAULT TRUE;
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='owners' AND column_name='deleted_count'
+                ) THEN
+                    ALTER TABLE owners ADD COLUMN deleted_count INTEGER DEFAULT 0;
+                END IF;
+            END $$;
+            """) 
             # Таблица сообщений
             cur.execute("""
             CREATE TABLE IF NOT EXISTS messages (
@@ -133,7 +151,17 @@ def is_owner_active(owner_id: int) -> bool:
             LIMIT 1
             """, (owner_id,))
             return cur.fetchone() is not None
-
+            
+def toggle_deleted_enabled(owner_id: int):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            UPDATE owners
+            SET deleted_enabled = NOT deleted_enabled
+            WHERE owner_id = %s
+            """, (owner_id,))
+        conn.commit()
+        
 def set_active_chat(owner_id: int, chat_id: int, peer_id: int, peer_name: str):
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -194,7 +222,74 @@ def get_recent_peers(owner_id: int, limit: int = 8):
             "peer_name": str(sender_name)
         })
     return res
+    
+# ================= SETTINGS: DELETED MESSAGES =================
 
+def is_deleted_enabled(owner_id: int) -> bool:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT deleted_enabled
+            FROM owners
+            WHERE owner_id = %s
+            LIMIT 1
+            """, (owner_id,))
+            r = cur.fetchone()
+            return r[0] if r else True
+
+
+def toggle_deleted(owner_id: int) -> bool:
+    """
+    Переключает состояние:
+    True -> False
+    False -> True
+    Возвращает НОВОЕ состояние
+    """
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            UPDATE owners
+            SET deleted_enabled = NOT deleted_enabled
+            WHERE owner_id = %s
+            RETURNING deleted_enabled
+            """, (owner_id,))
+            r = cur.fetchone()
+        conn.commit()
+    return r[0]
+
+
+def inc_deleted_count(owner_id: int, value: int = 1):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            UPDATE owners
+            SET deleted_count = deleted_count + %s
+            WHERE owner_id = %s
+            """, (value, owner_id))
+        conn.commit()
+
+
+def get_deleted_count(owner_id: int) -> int:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT deleted_count
+            FROM owners
+            WHERE owner_id = %s
+            LIMIT 1
+            """, (owner_id,))
+            r = cur.fetchone()
+            return r[0] if r else 0
+
+def set_deleted_enabled(owner_id: int, value: bool):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            UPDATE owners
+            SET deleted_enabled = %s
+            WHERE owner_id = %s
+            """, (value, owner_id))
+        conn.commit()
 # ================= TG API =================
 
 def tg(method, payload):
@@ -392,10 +487,12 @@ def setup_menu():
             {"command": "help", "description": "🆘 Поддержка"}
         ]
     })
-def settings_markup():
+def settings_markup(owner_id: int):
+    d = is_deleted_enabled(owner_id)
+
     return {
         "inline_keyboard": [
-            [{"text": "🗑 Удалённые сообщения: ✅", "callback_data": "noop"}],
+            [{"text": f"🗑 Удалённые сообщения: {'✅' if d else '🚫'}", "callback_data": "deleted_settings"}],
             [{"text": "✏️ Изменённые сообщения: ✅", "callback_data": "noop"}],
             [{"text": "♻️ Восстановить чат", "callback_data": "noop"}],
             [{"text": "⏳ Исчезающие медиа", "callback_data": "noop"}],
@@ -407,6 +504,67 @@ def settings_text():
         "⚙️ <b>Настройки</b>\n\n"
         "Глаза всё видят. Выбери, что хочешь настроить:"
     )
+def deleted_settings_text(count: int):
+    return (
+        "🗑 <b>Удалённые сообщения</b>\n\n"
+        "<blockquote>"
+        "Как это работает?\n"
+        "Даже когда ты не в сети, бот заметит, что твой собеседник удалил сообщение, "
+        "и отправит тебе уведомление. И, конечно, собеседник не может заметить "
+        "работу EyesSee!"
+        "</blockquote>\n\n"
+        f"<b>Поймал удалённых сообщений:</b> {count}"
+    )
+
+def deleted_settings_markup(enabled: bool):
+    return {
+        "inline_keyboard": [
+            [{
+                "text": "✅ Включено" if enabled else "🚫 Отключено",
+                "callback_data": "toggle_deleted"
+            }],
+            [{
+                "text": "◀️ Назад",
+                "callback_data": "back_settings"
+            }]
+        ]
+    }
+
+def deleted_settings_text(count: int) -> str:
+    return (
+        "🗑 <b>Удалённые сообщения</b>\n\n"
+        "<blockquote>"
+        "Даже когда ты не в сети, бот заметит, что твой собеседник удалил сообщение, "
+        "и отправит тебе уведомление.\n\n"
+        "И, конечно, собеседник не может заметить работу EyesSee!"
+        "</blockquote>\n\n"
+        f"<b>Поймано удалённых сообщений:</b> {count}"
+    )
+
+
+def deleted_settings_markup(enabled: bool):
+    return {
+        "inline_keyboard": [
+            [{
+                "text": "✅ Включено" if enabled else "🚫 Отключено",
+                "callback_data": "toggle_deleted"
+            }],
+            [{
+                "text": "◀️ Назад",
+                "callback_data": "back_to_settings"
+            }]
+        ]
+    }
+def get_deleted_count(owner_id: int) -> int:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT COUNT(*)
+                FROM messages
+                WHERE owner_id = %s
+                  AND message_id IS NOT NULL
+            """, (owner_id,))
+            return cur.fetchone()[0]
 # ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
@@ -595,6 +753,9 @@ def webhook():
         
         if r and r[0] == owner_id:
             return "ok"
+
+        # увеличиваем счётчик удалённых сообщений
+        inc_deleted_count(owner_id, len(mids))
         time.sleep(1)
 
         blocks = []
@@ -635,7 +796,8 @@ def webhook():
             if sender_id and sender_name:
                 who = f'\n\n<b>Удалил(а):</b> <a href="tg://user?id={sender_id}">{html.escape(sender_name)}</a>'
 
-            send_text(owner_id, title + "\n".join(blocks) + who)
+            if is_deleted_enabled(owner_id):
+                send_text(owner_id, title + "\n".join(blocks) + who)
 
         return "ok"
 
@@ -850,6 +1012,21 @@ def webhook():
         owner_id = (cq.get("from") or {}).get("id", 0)
         cd = cq.get("data") or ""
         # ⚙️ НАСТРОЙКИ
+        if cd == "deleted_settings":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+        
+            count = get_deleted_count(owner_id)
+            enabled = is_deleted_enabled(owner_id)
+        
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": deleted_settings_text(count),
+                "parse_mode": "HTML",
+                "reply_markup": deleted_settings_markup(enabled)
+            })
+        
+            return "ok"
         if cd == "settings":
             tg("answerCallbackQuery", {
                 "callback_query_id": cq["id"]
@@ -860,11 +1037,38 @@ def webhook():
                 "message_id": mid,
                 "text": settings_text(),
                 "parse_mode": "HTML",
-                "reply_markup": settings_markup()
+                "reply_markup": settings_markup(owner_id)
             })
-        
             return "ok"
-
+        if cd == "toggle_deleted":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+    
+            toggle_deleted_enabled(owner_id)
+    
+            enabled = is_deleted_enabled(owner_id)
+            count = get_deleted_count(owner_id)
+    
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": deleted_settings_text(count),
+                "parse_mode": "HTML",
+                "reply_markup": deleted_settings_markup(enabled)
+            })
+    
+            return "ok"
+        # ⬅️ Назад в настройки
+        if cd == "back_to_settings":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+        
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": settings_text(),
+                "parse_mode": "HTML",
+                "reply_markup": settings_markup(owner_id)
+            })
+            return "ok"
         # скрыть
         if cd.startswith("hide:"):
             if chat_id and mid:
@@ -977,6 +1181,19 @@ def webhook():
             )
             
             return "ok"
+        if cd == "back_settings":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+        
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": settings_text(),
+                "parse_mode": "HTML",
+                "reply_markup": settings_markup(owner_id)
+            })
+        
+            return "ok"
+        
             
         if cd == "noop":
             tg("answerCallbackQuery", {
