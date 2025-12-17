@@ -696,6 +696,15 @@ def webhook():
         owner_id = msg["from"]["id"]
         text = (msg.get("text") or "").strip()
         chat_id = msg["chat"]["id"]
+        if text == "/settings" or text == f"/settings@{BOT_USERNAME}":
+                tg("editMessageText", {
+                    "chat_id": chat_id,
+                    "message_id": msg["message_id"],
+                    "text": settings_text(),
+                    "parse_mode": "HTML",
+                    "reply_markup": settings_markup()
+                })
+                return "ok"
     
         if text.startswith("/start"):
             parts = text.split(maxsplit=1)
@@ -805,15 +814,7 @@ def webhook():
                 msg_type, file_id = r
                 send_media(chat_id, msg_type, file_id, token)
                 return "ok"
-            if text == "/settings" or text == f"/settings@{BOT_USERNAME}":
-                tg("editMessageText", {
-                    "chat_id": chat_id,
-                    "message_id": msg["message_id"],
-                    "text": settings_text(),
-                    "parse_mode": "HTML",
-                    "reply_markup": settings_markup()
-                })
-                return "ok"
+            
         # /recover — выбор чата для восстановления
         if text == "/recover" or text == f"/recover@{BOT_USERNAME}":
             tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
