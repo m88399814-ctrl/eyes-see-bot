@@ -63,8 +63,22 @@ def init_db():
                 ) THEN
                     ALTER TABLE owners ADD COLUMN deleted_count INTEGER DEFAULT 0;
                 END IF;
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='owners' AND column_name='edited_enabled'
+                ) THEN
+                    ALTER TABLE owners ADD COLUMN edited_enabled BOOLEAN DEFAULT TRUE;
+                END IF;
+            
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='owners' AND column_name='edited_count'
+                ) THEN
+                    ALTER TABLE owners ADD COLUMN edited_count INTEGER DEFAULT 0;
+                END IF;
             END $$;
             """) 
+            
             # Таблица сообщений
             cur.execute("""
             CREATE TABLE IF NOT EXISTS messages (
@@ -290,6 +304,75 @@ def set_deleted_enabled(owner_id: int, value: bool):
             WHERE owner_id = %s
             """, (value, owner_id))
         conn.commit()
+
+# ================= SETTINGS: EDITED MESSAGES =================
+
+def is_edited_enabled(owner_id: int) -> bool:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT edited_enabled
+            FROM owners
+            WHERE owner_id = %s
+            LIMIT 1
+            """, (owner_id,))
+            r = cur.fetchone()
+            return r[0] if r else True
+
+
+def toggle_edited(owner_id: int) -> bool:
+    """
+    Переключает состояние:
+    True -> False
+    False -> True
+    Возвращает НОВОЕ состояние
+    """
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            UPDATE owners
+            SET edited_enabled = NOT edited_enabled
+            WHERE owner_id = %s
+            RETURNING edited_enabled
+            """, (owner_id,))
+            r = cur.fetchone()
+        conn.commit()
+    return r[0]
+
+
+def inc_edited_count(owner_id: int, value: int = 1):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            UPDATE owners
+            SET edited_count = edited_count + %s
+            WHERE owner_id = %s
+            """, (value, owner_id))
+        conn.commit()
+
+
+def get_edited_count(owner_id: int) -> int:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT edited_count
+            FROM owners
+            WHERE owner_id = %s
+            LIMIT 1
+            """, (owner_id,))
+            r = cur.fetchone()
+            return r[0] if r else 0
+
+
+def set_edited_enabled(owner_id: int, value: bool):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            UPDATE owners
+            SET edited_enabled = %s
+            WHERE owner_id = %s
+            """, (value, owner_id))
+        conn.commit()
 # ================= TG API =================
 
 def tg(method, payload):
@@ -493,7 +576,7 @@ def settings_markup(owner_id: int):
     return {
         "inline_keyboard": [
             [{"text": f"🗑 Удалённые сообщения: {'✅' if d else '🚫'}", "callback_data": "deleted_settings"}],
-            [{"text": "✏️ Изменённые сообщения: ✅", "callback_data": "noop"}],
+            [{"text": f"✏️ Изменённые сообщения: {'✅' if is_edited_enabled(owner_id) else '🚫'}","callback_data": "edited_settings"}],
             [{"text": "♻️ Восстановить чат", "callback_data": "noop"}],
             [{"text": "⏳ Исчезающие медиа", "callback_data": "noop"}],
         ]
@@ -553,6 +636,17 @@ def get_deleted_count(owner_id: int) -> int:
                   AND message_id IS NOT NULL
             """, (owner_id,))
             return cur.fetchone()[0]
+
+def edited_settings_text(count: int):
+    return (
+        "✏️ <b>Изменённые сообщения</b>\n\n"
+        "<blockquote>"
+        "EyesSee замечает редактирование сообщений твоими собеседниками.\n\n"
+        "В случае изменений я отправлю тебе как старый, так и новый текст сообщения.\n\n"
+        "Думаю, когда-нибудь эта функция тебе пригодится!"
+        "</blockquote>\n\n"
+        f"<b>Заметил изменённых сообщений:</b> {count}"
+    )
 # ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
@@ -835,7 +929,13 @@ def webhook():
             f"</blockquote>\n\n"
         )
         who = f"<b>Изменил(а):</b> {editor_link}"
-
+        # если уведомления выключены — только считаем
+        if not is_edited_enabled(owner_id):
+            inc_edited_count(owner_id)
+            return "ok"
+        
+        # если включены — считаем и отправляем
+        inc_edited_count(owner_id)
         send_text(owner_id, title + body_old + body_new + who)
         return "ok"
 
@@ -1181,7 +1281,41 @@ def webhook():
             })
         
             return "ok"
+
+        # ✏️ Изменённые сообщения — открыть меню
+        if cd == "edited_settings":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         
+            count = get_edited_count(owner_id)
+            enabled = is_edited_enabled(owner_id)
+        
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": edited_settings_text(count),
+                "parse_mode": "HTML",
+                "reply_markup": edited_settings_markup(enabled)
+            })
+            return "ok"
+        
+        
+        # ✏️ Вкл / выкл изменённые
+        if cd == "toggle_edited":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+        
+            toggle_edited_enabled(owner_id)
+        
+            enabled = is_edited_enabled(owner_id)
+            count = get_edited_count(owner_id)
+        
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": edited_settings_text(count),
+                "parse_mode": "HTML",
+                "reply_markup": edited_settings_markup(enabled)
+            })
+            return "ok"
             
         if cd == "noop":
             tg("answerCallbackQuery", {
