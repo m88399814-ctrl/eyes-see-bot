@@ -892,19 +892,19 @@ def webhook():
                 )
 
         if blocks:
-            title = (
-                "🗑 <b>Новое удалённое сообщение</b>\n\n"
-                if len(blocks) == 1
-                else "🗑 <b>Новые удалённые сообщения</b>\n\n"
-            )
-        
-            who = ""
-            if sender_id and sender_name:
-                who = f'\n\n<b>Удалил(а):</b> <a href="tg://user?id={sender_id}">{html.escape(sender_name)}</a>'
-        
-            # ❌ если уведомления выключены — НЕ отправляем
-            if not is_deleted_enabled(owner_id):
-                return "ok"
+                title = (
+                    "🗑 <b>Новое удалённое сообщение</b>\n\n"
+                    if len(blocks) == 1
+                    else "🗑 <b>Новые удалённые сообщения</b>\n\n"
+                )
+            
+                who = ""
+                if sender_id and sender_name:
+                    who = f'\n\n<b>Удалил(а):</b> <a href="tg://user?id={sender_id}">{html.escape(sender_name)}</a>'
+            
+                # ❌ если уведомления выключены — НЕ отправляем
+                if not is_deleted_enabled(owner_id):
+                    return "ok"
 
     # ✅ если включены — отправляем
     send_text(owner_id, title + "\n".join(blocks) + who)
