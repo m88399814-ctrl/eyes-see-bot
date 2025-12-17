@@ -636,7 +636,20 @@ def get_deleted_count(owner_id: int) -> int:
                   AND message_id IS NOT NULL
             """, (owner_id,))
             return cur.fetchone()[0]
-
+            
+def edited_settings_markup(enabled: bool):
+    return {
+        "inline_keyboard": [
+            [{
+                "text": "🚫 Отключено" if not enabled else "✅ Включено",
+                "callback_data": "toggle_edited"
+            }],
+            [{
+                "text": "◀️ Назад",
+                "callback_data": "back_to_settings"
+            }]
+        ]
+    }
 def edited_settings_text(count: int):
     return (
         "✏️ <b>Изменённые сообщения</b>\n\n"
