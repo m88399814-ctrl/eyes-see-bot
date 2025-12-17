@@ -637,16 +637,6 @@ def deleted_settings_markup(enabled: bool):
             }]
         ]
     }
-def get_deleted_count(owner_id: int) -> int:
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT COUNT(*)
-                FROM messages
-                WHERE owner_id = %s
-                  AND message_id IS NOT NULL
-            """, (owner_id,))
-            return cur.fetchone()[0]
             
 def edited_settings_markup(enabled: bool):
     return {
