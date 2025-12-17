@@ -320,7 +320,7 @@ def is_edited_enabled(owner_id: int) -> bool:
             return r[0] if r else True
 
 
-def toggle_edited(owner_id: int) -> bool:
+def toggle_edited_enabled(owner_id: int) -> bool:
     """
     Переключает состояние:
     True -> False
@@ -339,6 +339,17 @@ def toggle_edited(owner_id: int) -> bool:
         conn.commit()
     return r[0]
 
+def is_edited_enabled(owner_id: int) -> bool:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT edited_enabled
+            FROM owners
+            WHERE owner_id = %s
+            LIMIT 1
+            """, (owner_id,))
+            r = cur.fetchone()
+            return r[0] if r else True
 
 def inc_edited_count(owner_id: int, value: int = 1):
     with get_db() as conn:
