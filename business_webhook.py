@@ -901,8 +901,9 @@ def webhook():
                     who = f'\n\n<b>Удалил(а):</b> <a href="tg://user?id={sender_id}">{html.escape(sender_name)}</a>'
             
                 if is_deleted_enabled(owner_id):
-                    return "ok"
-                send_text(owner_id, title + "\n".join(blocks) + who)
+                    send_text(owner_id, title + "\n".join(blocks) + who)
+                    
+        return "ok"
     # 4) изменение сообщений (группировка 1 сек)
     if "edited_business_message" in data:
         ebm = data["edited_business_message"]
