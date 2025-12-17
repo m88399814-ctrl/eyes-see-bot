@@ -392,7 +392,21 @@ def setup_menu():
             {"command": "help", "description": "🆘 Поддержка"}
         ]
     })
+def settings_markup():
+    return {
+        "inline_keyboard": [
+            [{"text": "🗑 Удалённые сообщения: ✅", "callback_data": "noop"}],
+            [{"text": "✏️ Изменённые сообщения: ✅", "callback_data": "noop"}],
+            [{"text": "♻️ Восстановить чат", "callback_data": "noop"}],
+            [{"text": "⏳ Исчезающие медиа", "callback_data": "noop"}],
+        ]
+    }
 
+def settings_text():
+    return (
+        "⚙️ <b>Настройки</b>\n\n"
+        "Глаза всё видят. Выбери, что хочешь настроить:"
+    )
 # ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
@@ -791,7 +805,15 @@ def webhook():
                 msg_type, file_id = r
                 send_media(chat_id, msg_type, file_id, token)
                 return "ok"
-        
+        if text == "/settings" or text == f"/settings@{BOT_USERNAME}":
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": msg["message_id"],
+                "text": settings_text(),
+                "parse_mode": "HTML",
+                "reply_markup": settings_markup()
+            })
+            return "ok"
         # /recover — выбор чата для восстановления
         if text == "/recover" or text == f"/recover@{BOT_USERNAME}":
             tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
@@ -834,28 +856,18 @@ def webhook():
         cd = cq.get("data") or ""
         # ⚙️ НАСТРОЙКИ
         if cd == "settings":
-            # 1️⃣ обязательно отвечаем Telegram
             tg("answerCallbackQuery", {
                 "callback_query_id": cq["id"]
             })
-    
-            # 2️⃣ удаляем сообщение с кнопкой
-            if chat_id and mid:
-                tg("deleteMessage", {
-                    "chat_id": chat_id,
-                    "message_id": mid
-                })
-    
-            # 3️⃣ показываем меню настроек (логика /settings)
-            send_text(
-                chat_id,
-                "⚙️ <b>Настройки</b>\n\n"
-                "• ♻️ Восстановление чатов\n"
-                "• 🗑 Логи сообщений\n"
-                "• 🌐 Web App\n"
-                "\n(меню можно расширить позже)"
-            )
-    
+        
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": settings_text(),
+                "parse_mode": "HTML",
+                "reply_markup": settings_markup()
+            })
+        
             return "ok"
 
         # скрыть
@@ -970,13 +982,20 @@ def webhook():
             )
             
             return "ok"
-       
+            
+        if cd == "noop":
+            tg("answerCallbackQuery", {
+                "callback_query_id": cq["id"],
+                "text": "Скоро будет доступно 👀",
+                "show_alert": False
+            })
+            return "ok"
 
 
         
         tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         return "ok"
-
+        
   
 # ================= WEB APP API =================
 @app.route("/api/chat", methods=["GET"])
