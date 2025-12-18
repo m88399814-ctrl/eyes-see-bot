@@ -76,6 +76,12 @@ def init_db():
                 ) THEN
                     ALTER TABLE owners ADD COLUMN edited_count INTEGER DEFAULT 0;
                 END IF;
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='owners' AND column_name='disappear_count'
+                ) THEN
+                    ALTER TABLE owners ADD COLUMN disappear_count INTEGER DEFAULT 0;
+                END IF;
             END $$;
             """) 
             
@@ -384,6 +390,31 @@ def set_edited_enabled(owner_id: int, value: bool):
             WHERE owner_id = %s
             """, (value, owner_id))
         conn.commit()
+
+# ================= SETTINGS: DISAPPEARING MEDIA =================
+
+def inc_disappear_count(owner_id: int, value: int = 1):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            UPDATE owners
+            SET disappear_count = disappear_count + %s
+            WHERE owner_id = %s
+            """, (value, owner_id))
+        conn.commit()
+
+
+def get_disappear_count(owner_id: int) -> int:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT disappear_count
+            FROM owners
+            WHERE owner_id = %s
+            LIMIT 1
+            """, (owner_id,))
+            r = cur.fetchone()
+            return r[0] if r else 0
 # ================= TG API =================
 
 def tg(method, payload):
@@ -589,7 +620,7 @@ def settings_markup(owner_id: int):
             [{"text": f"🗑 Удалённые сообщения: {'✅' if d else '🚫'}", "callback_data": "deleted_settings"}],
             [{"text": f"✏️ Изменённые сообщения: {'✅' if is_edited_enabled(owner_id) else '🚫'}","callback_data": "edited_settings"}],
             [{"text": "♻️ Восстановить чат", "callback_data": "recover_menu"}],
-            [{"text": "⏳ Исчезающие медиа", "callback_data": "noop"}],
+            [{"text": "⏳ Исчезающие медиа", "callback_data": "disappearing_settings"}],
         ]
     }
 
@@ -661,6 +692,34 @@ def edited_settings_text(count: int):
         "</blockquote>\n\n"
         f"<b>Заметил изменённых сообщений:</b> {count}"
     )
+
+def disappearing_settings_text(count: int):
+    return (
+        "⌛️ <b>Исчезающие медиа (с таймером)</b>\n\n"
+        "<blockquote>"
+        "<b>Как это работает?</b>\n\n"
+        "Если ты хочешь сохранить любой одноразовый файл, сделай так:\n\n"
+        "1. В переписке с отправителем, не открывая файл, смахни сообщение с ним налево, чтобы ответить на него\n"
+        "2. Напиши что угодно, например «Попозже» или «Не грузит»\n"
+        "3. Отправь сообщение.\n\n"
+        "За долю секунды EyesSee поймёт, что надо сохранить, и отправит тебе!"
+        "</blockquote>\n\n"
+        "<blockquote>"
+        "<b>Как это включить?</b>\n\n"
+        "Эта функция всегда включена. Бот будет присылать:\n"
+        "одноразовые фото и видео, голосовые и видеосообщения.\n\n"
+        "Главное — делай всё по инструкции выше.\n"
+        "Приятного пользования ❤️"
+        "</blockquote>\n\n"
+        f"<b>Заметил медиа:</b> {count}"
+    )
+
+def disappearing_settings_markup():
+    return {
+        "inline_keyboard": [
+            [{"text": "◀️ Назад", "callback_data": "back_to_settings"}]
+        ]
+    }
 # ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
@@ -777,7 +836,7 @@ def webhook():
             header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
             body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
             who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
-
+            inc_disappear_count(owner_id)
             send_text(owner_id, header + body + who)
             return "ok"
 
@@ -1189,7 +1248,21 @@ def webhook():
                 tg("deleteMessage", {"chat_id": chat_id, "message_id": mid})
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
             return "ok"
+            
+        # ⌛️ Исчезающие медиа — открыть меню
+        if cd == "disappearing_settings":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
 
+            count = get_disappear_count(owner_id)
+
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": disappearing_settings_text(count),
+                "parse_mode": "HTML",
+                "reply_markup": disappearing_settings_markup()
+            })
+            return "ok"
             
         
 
