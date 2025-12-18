@@ -251,6 +251,7 @@ def is_deleted_enabled(owner_id: int) -> bool:
             r = cur.fetchone()
             return r[0] if r else True
 
+
 def toggle_deleted(owner_id: int) -> bool:
     """
     Переключает состояние:
@@ -270,6 +271,7 @@ def toggle_deleted(owner_id: int) -> bool:
         conn.commit()
     return r[0]
 
+
 def inc_deleted_count(owner_id: int, value: int = 1):
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -279,6 +281,7 @@ def inc_deleted_count(owner_id: int, value: int = 1):
             WHERE owner_id = %s
             """, (value, owner_id))
         conn.commit()
+
 
 def get_deleted_count(owner_id: int) -> int:
     with get_db() as conn:
@@ -316,6 +319,7 @@ def is_edited_enabled(owner_id: int) -> bool:
             r = cur.fetchone()
             return r[0] if r else True
 
+
 def toggle_edited_enabled(owner_id: int) -> bool:
     """
     Переключает состояние:
@@ -335,6 +339,18 @@ def toggle_edited_enabled(owner_id: int) -> bool:
         conn.commit()
     return r[0]
 
+def is_edited_enabled(owner_id: int) -> bool:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT edited_enabled
+            FROM owners
+            WHERE owner_id = %s
+            LIMIT 1
+            """, (owner_id,))
+            r = cur.fetchone()
+            return r[0] if r else True
+
 def inc_edited_count(owner_id: int, value: int = 1):
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -344,6 +360,7 @@ def inc_edited_count(owner_id: int, value: int = 1):
             WHERE owner_id = %s
             """, (value, owner_id))
         conn.commit()
+
 
 def get_edited_count(owner_id: int) -> int:
     with get_db() as conn:
@@ -357,6 +374,7 @@ def get_edited_count(owner_id: int) -> int:
             r = cur.fetchone()
             return r[0] if r else 0
 
+
 def set_edited_enabled(owner_id: int, value: bool):
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -366,7 +384,6 @@ def set_edited_enabled(owner_id: int, value: bool):
             WHERE owner_id = %s
             """, (value, owner_id))
         conn.commit()
-
 # ================= TG API =================
 
 def tg(method, payload):
@@ -386,7 +403,6 @@ def send_text(chat_id, text, markup=None):
     if markup:
         data["reply_markup"] = markup
     tg("sendMessage", data)
-
 def send_photo(chat_id, photo_url, caption, markup=None):
     data = {
         "chat_id": chat_id,
@@ -565,7 +581,6 @@ def setup_menu():
             {"command": "help", "description": "🆘 Поддержка"}
         ]
     })
-
 def settings_markup(owner_id: int):
     d = is_deleted_enabled(owner_id)
 
@@ -573,7 +588,7 @@ def settings_markup(owner_id: int):
         "inline_keyboard": [
             [{"text": f"🗑 Удалённые сообщения: {'✅' if d else '🚫'}", "callback_data": "deleted_settings"}],
             [{"text": f"✏️ Изменённые сообщения: {'✅' if is_edited_enabled(owner_id) else '🚫'}","callback_data": "edited_settings"}],
-            [{"text": "♻️ Восстановить чат", "callback_data": "restore_chat"}],  # изменено здесь
+            [{"text": "♻️ Восстановить чат", "callback_data": "recover_menu"}],
             [{"text": "⏳ Исчезающие медиа", "callback_data": "noop"}],
         ]
     }
@@ -583,7 +598,6 @@ def settings_text():
         "⚙️ <b>Настройки</b>\n\n"
         "Глаза всё видят. Выбери, что хочешь настроить:"
     )
-
 def deleted_settings_text(count: int):
     return (
         "🗑 <b>Удалённые сообщения</b>\n\n"
@@ -604,11 +618,26 @@ def deleted_settings_markup(enabled: bool):
             }],
             [{
                 "text": "◀️ Назад",
-                "callback_data": "back_to_settings"
+                "callback_data": "back_settings"
             }]
         ]
     }
 
+
+def deleted_settings_markup(enabled: bool):
+    return {
+        "inline_keyboard": [
+            [{
+                "text": "✅ Включено" if enabled else "🚫 Отключено",
+                "callback_data": "toggle_deleted"
+            }],
+            [{
+                "text": "◀️ Назад",
+                "callback_data": "back_to_settings"
+            }]
+        ]
+    }
+            
 def edited_settings_markup(enabled: bool):
     return {
         "inline_keyboard": [
@@ -622,18 +651,6 @@ def edited_settings_markup(enabled: bool):
             }]
         ]
     }
-
-def get_deleted_count(owner_id: int) -> int:
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT COUNT(*)
-                FROM messages
-                WHERE owner_id = %s
-                  AND message_id IS NOT NULL
-            """, (owner_id,))
-            return cur.fetchone()[0]
-            
 def edited_settings_text(count: int):
     return (
         "✏️ <b>Изменённые сообщения</b>\n\n"
@@ -644,7 +661,6 @@ def edited_settings_text(count: int):
         "</blockquote>\n\n"
         f"<b>Заметил изменённых сообщений:</b> {count}"
     )
-
 # ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
@@ -840,6 +856,7 @@ def webhook():
         sender_id = None
         sender_name = None
 
+        mids = dbm.get("message_ids", [])
         for mid in mids:
             with get_db() as conn:
                 with conn.cursor() as cur:
@@ -863,21 +880,28 @@ def webhook():
                 )
 
         if blocks:
+            inc_deleted_count(owner_id, len(blocks))
+    
             title = (
                 "🗑 <b>Новое удалённое сообщение</b>\n\n"
                 if len(blocks) == 1
                 else "🗑 <b>Новые удалённые сообщения</b>\n\n"
             )
-            
+    
             who = ""
             if sender_id and sender_name:
-                who = f'\n\n<b>Удалил(а):</b> <a href="tg://user?id={sender_id}">{html.escape(sender_name)}</a>'
-            
-            if is_deleted_enabled(owner_id):
-                send_text(owner_id, title + "\n".join(blocks) + who)
-                    
+                who = (
+                    f'\n\n<b>Удалил(а):</b> '
+                    f'<a href="tg://user?id={sender_id}">{html.escape(sender_name)}</a>'
+                )
+    
+            # ❌ если уведомления выключены — НЕ отправляем (но счётчик уже посчитали)
+            if not is_deleted_enabled(owner_id):
+                return "ok"
+    
+            send_text(owner_id, title + "\n".join(blocks) + who)
+    
         return "ok"
-
     # 4) изменение сообщений (группировка 1 сек)
     if "edited_business_message" in data:
         ebm = data["edited_business_message"]
@@ -1026,9 +1050,36 @@ def webhook():
                 "👁️ Бот запущен\n\nНажми кнопку «Меню» снизу 👇"
             )
             return "ok"
+            
+            # ✅ /start <token> — ТВОЯ СТАРАЯ ЛОГИКА (НЕ ТРОГАЛ)
+            if payload and re.fullmatch(r"[0-9a-f]{10}", payload):
+                tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
+    
+                token = payload
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                        SELECT msg_type, file_id
+                        FROM messages
+                        WHERE owner_id = %s AND token = %s
+                        """, (owner_id, token))
+                        r = cur.fetchone()
+    
+                if not r:
+                    send_text(
+                        chat_id,
+                        "❌ <b>Не получилось открыть файл</b> 😔\n"
+                        "Возможно он был отправлен слишком давно",
+                        hide_markup("error")
+                    )
+                    return "ok"
+    
+                msg_type, file_id = r
+                send_media(chat_id, msg_type, file_id, token)
+                return "ok"
+            
 
-        return "ok"  # окончание обработки входящего сообщения
-
+        return "ok"
     # 6) callback-кнопки
     if "callback_query" in data:
         cq = data["callback_query"]
@@ -1067,6 +1118,42 @@ def webhook():
                 "reply_markup": settings_markup(owner_id)
             })
             return "ok"
+
+        # ♻️ Восстановить чат — ОТКРЫТЬ МЕНЮ (БЕЗ УДАЛЕНИЯ)
+        if cd == "recover_menu":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+        
+            peers = get_recent_peers(owner_id, limit=10)
+        
+            kb = []
+        
+            if not peers:
+                text = "❌ <b>Нет данных для восстановления</b>"
+            else:
+                for p in peers:
+                    name = (p["peer_name"] or "пользователь").strip()
+                    if len(name) > 28:
+                        name = name[:28] + "…"
+        
+                    kb.append([{
+                        "text": f"👤 {name}",
+                        "callback_data": f"choose_chat:{p['chat_id']}:{p['peer_id']}"
+                    }])
+        
+                text = "<b>♻️ Восстановить чат</b>\n\nВыбери чат, который хочешь восстановить:"
+        
+            # ⬅️ ТОЛЬКО НАЗАД (БЕЗ СКРЫТЬ)
+            kb.append([{"text": "⬅️ Назад", "callback_data": "back_to_settings"}])
+        
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": text,
+                "parse_mode": "HTML",
+                "reply_markup": {"inline_keyboard": kb}
+            })
+        
+            return "ok"
         if cd == "toggle_deleted":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
     
@@ -1103,59 +1190,20 @@ def webhook():
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
             return "ok"
 
-        # Новое: восстановление чата
-        if cd == "restore_chat":
-            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+            
         
-            peers = get_recent_peers(owner_id, limit=10)
-            if not peers:
-                tg("editMessageText", {
-                    "chat_id": chat_id,
-                    "message_id": mid,
-                    "text": "❌ <b>Нет данных для восстановления</b>"
-                })
-                return "ok"
-        
-            kb = []
-            for p in peers:
-                name = (p["peer_name"] or "пользователь").strip()
-                if len(name) > 28:
-                    name = name[:28] + "…"
-                kb.append([{
-                    "text": f"👤 {name}",
-                    "callback_data": f"choose_chat:{p['chat_id']}:{p['peer_id']}"
-                }])
-            kb.append([{"text": "⬅️ Назад", "callback_data": "back_to_settings"}])
-        
-            tg("editMessageText", {
-                "chat_id": chat_id,
-                "message_id": mid,
-                "text": (
-                    "<b>♻️ Восстановить чат</b>\n\n"
-                    "Выбери чат, который хочешь восстановить:"
-                ),
-                "parse_mode": "HTML",
-                "reply_markup": {"inline_keyboard": kb}
-            })
-        
-            return "ok"
 
-        # === выбран пользователь → показать меню "Открыть чат" ===
+        # === выбран пользователь → показать меню "Открыть чат" (ЧЕРЕЗ EDIT) ===
         if cd.startswith("choose_chat:"):
-            # ✅ 1. СРАЗУ отвечаем Telegram
-            tg("answerCallbackQuery", {
-                "callback_query_id": cq["id"]
-            })
-        
-            # ✅ 2. ПОТОМ парсим данные
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+
             try:
                 _, biz_chat_id, peer_id = cd.split(":", 2)
                 biz_chat_id = int(biz_chat_id)
                 peer_id = int(peer_id)
             except Exception:
                 return "ok"
-        
-            # ✅ 3. ПОТОМ БД
+
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
@@ -1166,82 +1214,43 @@ def webhook():
                     LIMIT 1
                     """, (owner_id, biz_chat_id, peer_id))
                     r = cur.fetchone()
-        
+
             peer_name = r[0] if r and r[0] else "пользователь"
 
-            # 🔥 Устанавливаем выбранный активный чат (для /start)
             set_active_chat(
                 owner_id=owner_id,
                 chat_id=biz_chat_id,
                 peer_id=peer_id,
                 peer_name=peer_name
             )
-            
-            # ✅ 4. Удаляем старое меню
-            if chat_id and mid:
-                tg("deleteMessage", {
-                    "chat_id": chat_id,
-                    "message_id": mid
-                })
-        
-            # ✅ 5. Показываем новое меню
-            send_text(
-                chat_id,
-                (   
-                    f"👤 <b>{html.escape(peer_name)}</b> "
-                    f"(id: <code>{peer_id}</code>)\n\n"
-                    f"Здесь ты можешь восстановить чат "
-                    f"(если он был удалён) или вернуться назад, "
-                    f"чтобы выбрать другого пользователя."
 
-                ),
-                {
-                    "inline_keyboard": [
-                        [{"text": "♻️ Восстановить чат", "web_app": {
-                            "url": f"https://eyes-see-bot.onrender.com/webapp?chat_id={biz_chat_id}"
-                        }}],
-                        [{"text": "⬅️ Назад", "callback_data": "back_to_chats"}]
-                    ]
-                }
+            text2 = (
+                f"👤 <b>{html.escape(peer_name)}</b> "
+                f"(id: <code>{peer_id}</code>)\n\n"
+                f"Здесь ты можешь восстановить чат "
+                f"(если он был удалён) или вернуться назад, "
+                f"чтобы выбрать другого пользователя."
             )
-        
-            return "ok"
 
-        # === назад к списку пользователей ===
-        if cd == "back_to_chats":
-            # удаляем текущее меню
-            if chat_id and mid:
-                tg("deleteMessage", {
-                    "chat_id": chat_id,
-                    "message_id": mid
-                })
-        
-            # имитируем повторный вызов pick_chat
-            peers = get_recent_peers(owner_id, limit=10)
-        
-            kb = []
-            for p in peers:
-                nm = (p["peer_name"] or "пользователь").strip()
-                if len(nm) > 24:
-                    nm = nm[:24] + "…"
-                kb.append([{
-                    "text": f"👤 {nm}",
-                    "callback_data": f"choose_chat:{p['chat_id']}:{p['peer_id']}"
-                }])
-        
-            kb.append([{"text": "✖️ Скрыть", "callback_data": "hide:menu"}])
-            
-            tg("answerCallbackQuery", {
-                "callback_query_id": cq["id"]
+            kb2 = {
+                "inline_keyboard": [
+                    [{
+                        "text": "♻️ Восстановить чат",
+                        "web_app": { "url": f"https://eyes-see-bot.onrender.com/webapp?chat_id={biz_chat_id}" }
+                    }],
+                    [{"text": "⬅️ Назад", "callback_data": "back_to_chats"}]
+                ]
+            }
+
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": text2,
+                "parse_mode": "HTML",
+                "reply_markup": kb2
             })
-
-            send_text(
-                chat_id,
-                "<b>♻️ Восстановить чат</b>\n\nВыбери чат, который хочешь восстановить:",
-                {"inline_keyboard": kb}
-            )
-            
             return "ok"
+
         if cd == "back_settings":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         
@@ -1255,6 +1264,42 @@ def webhook():
         
             return "ok"
 
+                # === назад к списку пользователей (ЧЕРЕЗ EDIT) ===
+        if cd == "back_to_chats":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+
+            peers = get_recent_peers(owner_id, limit=10)
+
+            if not peers:
+                tg("editMessageText", {
+                    "chat_id": chat_id,
+                    "message_id": mid,
+                    "text": "❌ <b>Нет данных для восстановления</b>",
+                    "parse_mode": "HTML"
+                })
+                return "ok"
+
+            kb = []
+            for p in peers:
+                name = (p["peer_name"] or "пользователь").strip()
+                if len(name) > 28:
+                    name = name[:28] + "…"
+                kb.append([{
+                    "text": f"👤 {name}",
+                    "callback_data": f"choose_chat:{p['chat_id']}:{p['peer_id']}"
+                }])
+
+            # тут по твоему требованию: ВМЕСТО "Скрыть" — "Назад" (в меню настроек)
+            kb.append([{"text": "⬅️ Назад", "callback_data": "back_to_settings"}])
+
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": "<b>♻️ Восстановить чат</b>\n\nВыбери чат, который хочешь восстановить:",
+                "parse_mode": "HTML",
+                "reply_markup": {"inline_keyboard": kb}
+            })
+            return "ok"
         # ✏️ Изменённые сообщения — открыть меню
         if cd == "edited_settings":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
@@ -1297,6 +1342,7 @@ def webhook():
                 "show_alert": False
             })
             return "ok"
+
 
         
         tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
@@ -1346,6 +1392,8 @@ def api_chat():
         "ok": True,
         "messages": messages
     }
+
+# ================= WEB APP =================
 
 @app.route("/webapp")
 def webapp():
