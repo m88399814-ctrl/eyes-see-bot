@@ -12,7 +12,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 BOT_USERNAME = "EyesSeeBot"  # без @
 CONNECT_PHOTO_URL = "https://eyes-see-bot.onrender.com/static/connect_bot.jpg"
-
+SUPPORT_ADMIN_ID = 7620847581  # <-- сюда ID админа
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 
@@ -720,6 +720,30 @@ def disappearing_settings_markup():
             [{"text": "◀️ Назад", "callback_data": "back_to_settings"}]
         ]
     }
+
+def help_text():
+    return (
+        "<b>Поддержка</b>\n\n"
+        "Любые вопросы по поводу бота: технические моменты, реклама, "
+        "подписка, партнёрская программа, а также баги, ошибки и ваши предложения. "
+        "Всё сюда 😉"
+    )
+
+
+def help_markup():
+    return {
+        "inline_keyboard": [
+            [{
+                "text": "✍️ Задать вопрос",
+                "url": (
+                    "tg://user?id="
+                    f"{SUPPORT_ADMIN_ID}"
+                    "&text="
+                    "Здравствуйте.%20Вопрос%20по%20поводу%20EyesSee:%0A%0A"
+                )
+            }]
+        ]
+    }
 # ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
@@ -1027,7 +1051,9 @@ def webhook():
         if text == "/settings" or text == f"/settings@{BOT_USERNAME}":
             send_text(chat_id, settings_text(), settings_markup(owner_id))
             return "ok"
-    
+        if text == "/help" or text == f"/help@{BOT_USERNAME}":
+            send_text(chat_id, help_text(), help_markup())
+            return "ok"
         if text.startswith("/start"):
             parts = text.split(maxsplit=1)
             cmd = parts[0]
