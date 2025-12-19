@@ -12,7 +12,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 BOT_USERNAME = "EyesSeeBot"  # без @
 CONNECT_PHOTO_URL = "https://eyes-see-bot.onrender.com/static/connect_bot.jpg"
-SUPPORT_ADMIN_ID = hakxkdkdo  # <-- сюда ID админа
+SUPPORT_ADMIN_ID = "hakxkdkdo"  # <-- сюда ID админа
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 
