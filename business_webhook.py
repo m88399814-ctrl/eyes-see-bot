@@ -739,7 +739,9 @@ def help_markup():
                     "https://t.me/"
                     f"{SUPPORT_ADMIN_USERNAME}"
                     "?text="
-                    "Здравствуйте.%20Вопрос%20по%20поводу%20EyesSee:%0A%0A"
+                    "Здравствуйте. Вопрос по поводу EyesSee:
+                    
+                    "
                 )
             }]
         ]
@@ -1051,6 +1053,7 @@ def webhook():
         if text == "/settings" or text == f"/settings@{BOT_USERNAME}":
             send_text(chat_id, settings_text(), settings_markup(owner_id))
             return "ok"
+            
         if text == "/help" or text == f"/help@{BOT_USERNAME}":
             send_text(chat_id, help_text(), help_markup())
             return "ok"
