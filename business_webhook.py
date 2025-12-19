@@ -739,9 +739,7 @@ def help_markup():
                     "https://t.me/"
                     f"{SUPPORT_ADMIN_USERNAME}"
                     "?text="
-                    "Здравствуйте. Вопрос по поводу EyesSee:
-                    
-                    "
+                    "Здравствуйте. Вопрос по поводу EyesSee:\n"
                 )
             }]
         ]
