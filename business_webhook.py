@@ -7,7 +7,9 @@ import psycopg2
 import requests
 import html
 from flask import Flask, request
+from urllib.parse import quote
 
+SUPPORT_TEXT = "Здравствуйте. Вопрос по поводу EyesSee:\n\n"
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 BOT_USERNAME = "EyesSeeBot"  # без @
@@ -736,9 +738,9 @@ def help_markup():
             [{
                 "text": "✍️ Задать вопрос",
                 "url": (
-                    "https://t.me/"
-                    f"{SUPPORT_ADMIN_USERNAME}"
-                    "?text=Здравствуйте. Вопрос по поводу EyesSee:\n\n"
+                    f"tg://resolve?"
+                    f"domain={SUPPORT_ADMIN_USERNAME}"
+                    f"&text={quote(SUPPORT_TEXT)}"
                 )
             }]
         ]
