@@ -738,8 +738,7 @@ def help_markup():
                 "url": (
                     "https://t.me/"
                     f"{SUPPORT_ADMIN_USERNAME}"
-                    "?text="
-                    "Здравствуйте. Вопрос по поводу EyesSee:\n"
+                    "?text=Здравствуйте. Вопрос по поводу EyesSee:\n\n"
                 )
             }]
         ]
