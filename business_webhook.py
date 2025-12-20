@@ -780,6 +780,35 @@ def help_markup():
             }]
         ]
     }
+
+def trial_expired_text(start_date: str, end_date: str, ref_link: str):
+    return (
+        "<b>Твой пробный период закончился</b>\n\n"
+        f"<b>Начало:</b> {start_date}\n"
+        f"<b>Конец:</b> {end_date}\n\n"
+        "Ты можешь <b>бесплатно</b> продлить подписку ещё на целый месяц, "
+        "если 2 твоих друга с Telegram Premium запустят и подключат бота по твоей ссылке:\n\n"
+        f"<code>{ref_link}</code>\n\n"
+        "<b>Ну, или продлить платно (см. ниже)</b>\n"
+        "Звёзды можно купить на 25% дешевле в нашем сервисе Catcher Stars 🤫\n\n"
+        "<b>Вопросы?</b> — /support"
+    )
+
+def trial_expired_markup(ref_link: str):
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "📋 Скопировать", "callback_data": "copy_ref"},
+                {"text": "📤 Поделиться", "switch_inline_query": ""}
+            ],
+            [
+                {"text": "⭐ Оплатить 1 месяц — 80", "callback_data": "pay_stars_1m"}
+            ],
+            [
+                {"text": "💳 Оплатить картой", "callback_data": "pay_card"}
+            ]
+        ]
+    }
 # ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
@@ -1135,7 +1164,23 @@ def webhook():
         
             if "@" in cmd and cmd != f"/start@{BOT_USERNAME}":
                 return "ok"
+            # 🔐 PAYWALL — ТОЛЬКО ЗДЕСЬ
+            if not has_access(owner_id):
+                if payload:
+                    tg("deleteMessage", {
+                        "chat_id": chat_id,
+                        "message_id": msg["message_id"]
+                    })
         
+                start_date, end_date = get_trial_dates(owner_id)
+                ref_link = get_ref_link(owner_id)
+        
+                send_text(
+                    chat_id,
+                    trial_expired_text(start_date, end_date),
+                    trial_expired_markup(ref_link)
+                )
+                return "ok"
             # =========================
             # /start БЕЗ токена
             # =========================
