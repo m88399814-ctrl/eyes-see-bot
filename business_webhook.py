@@ -84,6 +84,23 @@ def init_db():
                 ) THEN
                     ALTER TABLE owners ADD COLUMN disappear_count INTEGER DEFAULT 0;
                 END IF;
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='owners' AND column_name='trial_until'
+                ) THEN
+                    ALTER TABLE owners
+                    ADD COLUMN trial_until TIMESTAMP;
+                END IF;
+                
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='owners' AND column_name='sub_until'
+                ) THEN
+                    ALTER TABLE owners
+                    ADD COLUMN sub_until TIMESTAMP;
+                END IF;
             END $$;
             """) 
             
@@ -723,6 +740,7 @@ def disappearing_settings_markup():
         ]
     }
 
+
 def help_text():
     return (
         "<b>🆘 Поддержка</b>\n\n"
@@ -775,12 +793,13 @@ def webhook():
         
                 # текущее подключение пишем как есть
                 cur.execute("""
-                    INSERT INTO owners (business_connection_id, owner_id, is_active)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO owners (business_connection_id, owner_id, is_active, trial_until)
+                    VALUES (%s, %s, %s, NOW() + INTERVAL '14 days')
                     ON CONFLICT (business_connection_id)
                     DO UPDATE SET
                         owner_id = EXCLUDED.owner_id,
-                        is_active = EXCLUDED.is_active
+                        is_active = EXCLUDED.is_active,
+                        trial_until = COALESCE(owners.trial_until, EXCLUDED.trial_until)
                 """, (bc_id, owner_id, is_enabled))
         
             conn.commit()
@@ -1049,6 +1068,25 @@ def webhook():
         owner_id = msg["from"]["id"]
         text = (msg.get("text") or "").strip()
         chat_id = msg["chat"]["id"]
+
+                # 🧪 DEBUG trial_until (ВРЕМЕННО)
+        if text == "/trialdebug":
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                    SELECT trial_until
+                    FROM owners
+                    WHERE owner_id = %s
+                    """, (owner_id,))
+                    t = cur.fetchone()
+
+            send_text(
+                chat_id,
+                f"DEBUG trial_until:\n<code>{t[0] if t else 'NULL'}</code>"
+            )
+            return "ok"
+
+        
         if text == "/settings" or text == f"/settings@{BOT_USERNAME}":
             send_text(chat_id, settings_text(), settings_markup(owner_id))
             return "ok"
