@@ -818,7 +818,12 @@ def webhook():
                             owners.trial_until,
                             EXCLUDED.trial_until
                         );
-                """, (bc_id, owner_id, is_enabled))
+                """, (
+                    owner_id,   # ← ДЛЯ existing (ЭТО ГЛАВНОЕ)
+                    bc_id,
+                    owner_id,
+                    is_enabled
+                ))
         
             conn.commit()
     
