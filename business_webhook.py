@@ -1191,6 +1191,9 @@ def webhook():
         
             if "@" in cmd and cmd != f"/start@{BOT_USERNAME}":
                 return "ok"
+
+
+            
             # 🔐 PAYWALL — ТОЛЬКО ЗДЕСЬ
             if not has_access(owner_id):
                 if payload:
@@ -1198,13 +1201,13 @@ def webhook():
                         "chat_id": chat_id,
                         "message_id": msg["message_id"]
                     })
-        
+            
                 start_date, end_date = get_trial_dates(owner_id)
                 ref_link = get_ref_link(owner_id)
-        
+            
                 send_text(
                     chat_id,
-                    trial_expired_text(start_date, end_date),
+                    trial_expired_text(start_date, end_date, ref_link),
                     trial_expired_markup(ref_link)
                 )
                 return "ok"
