@@ -1121,13 +1121,6 @@ def webhook():
         text = (msg.get("text") or "").strip()
         chat_id = msg["chat"]["id"]
 
-        if text == "/accessdebug":
-            send_text(
-                chat_id,
-                f"ACCESS: {'✅ есть' if has_access(owner_id) else '❌ нет'}"
-            )
-            return "ok"
-        
         if text == "/settings" or text == f"/settings@{BOT_USERNAME}":
             send_text(chat_id, settings_text(), settings_markup(owner_id))
             return "ok"
