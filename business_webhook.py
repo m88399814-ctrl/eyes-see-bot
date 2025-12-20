@@ -793,13 +793,31 @@ def webhook():
         
                 # текущее подключение пишем как есть
                 cur.execute("""
+                    WITH existing AS (
+                        SELECT trial_until
+                        FROM owners
+                        WHERE owner_id = %s
+                          AND trial_until IS NOT NULL
+                        LIMIT 1
+                    )
                     INSERT INTO owners (business_connection_id, owner_id, is_active, trial_until)
-                    VALUES (%s, %s, %s, NOW() + INTERVAL '14 days')
+                    VALUES (
+                        %s,
+                        %s,
+                        %s,
+                        COALESCE(
+                            (SELECT trial_until FROM existing),
+                            NOW() + INTERVAL '14 days'
+                        )
+                    )
                     ON CONFLICT (business_connection_id)
                     DO UPDATE SET
                         owner_id = EXCLUDED.owner_id,
                         is_active = EXCLUDED.is_active,
-                        trial_until = COALESCE(owners.trial_until, EXCLUDED.trial_until)
+                        trial_until = COALESCE(
+                            owners.trial_until,
+                            EXCLUDED.trial_until
+                        );
                 """, (bc_id, owner_id, is_enabled))
         
             conn.commit()
