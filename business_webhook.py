@@ -261,7 +261,24 @@ def get_recent_peers(owner_id: int, limit: int = 8):
             "peer_name": str(sender_name)
         })
     return res
-    
+
+
+def has_access(owner_id: int) -> bool:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            SELECT
+                CASE
+                    WHEN sub_until IS NOT NULL AND sub_until > NOW() THEN TRUE
+                    WHEN sub_until IS NULL AND trial_until IS NOT NULL AND trial_until > NOW() THEN TRUE
+                    ELSE FALSE
+                END
+            FROM owners
+            WHERE owner_id = %s
+            LIMIT 1
+            """, (owner_id,))
+            r = cur.fetchone()
+            return bool(r[0]) if r else False
 # ================= SETTINGS: DELETED MESSAGES =================
 
 def is_deleted_enabled(owner_id: int) -> bool:
@@ -853,6 +870,10 @@ def webhook():
         owner_id = get_owner(bc_id)
         if not owner_id:
             return "ok"
+        
+        # 🔒 ПРОВЕРКА ДОСТУПА
+        if not has_access(owner_id):
+            return "ok"
 
         sender = msg.get("from", {})
         chat_id = (msg.get("chat") or {}).get("id")
@@ -959,6 +980,10 @@ def webhook():
         if not owner_id:
             return "ok"
         
+        # 🔒 ПРОВЕРКА ДОСТУПА
+        if not has_access(owner_id):
+            return "ok"
+        
 
 
 
@@ -1038,6 +1063,10 @@ def webhook():
         owner_id = get_owner(bc_id)
         if not owner_id:
             return "ok"
+        
+        # 🔒 ПРОВЕРКА ДОСТУПА
+        if not has_access(owner_id):
+            return "ok"
 
 
         # ❌ НЕ показываем изменения сообщений владельца
@@ -1091,6 +1120,13 @@ def webhook():
         owner_id = msg["from"]["id"]
         text = (msg.get("text") or "").strip()
         chat_id = msg["chat"]["id"]
+
+        if text == "/accessdebug":
+            send_text(
+                chat_id,
+                f"ACCESS: {'✅ есть' if has_access(owner_id) else '❌ нет'}"
+            )
+            return "ok"
         
         if text == "/settings" or text == f"/settings@{BOT_USERNAME}":
             send_text(chat_id, settings_text(), settings_markup(owner_id))
