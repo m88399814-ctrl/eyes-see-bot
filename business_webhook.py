@@ -1091,24 +1091,6 @@ def webhook():
         owner_id = msg["from"]["id"]
         text = (msg.get("text") or "").strip()
         chat_id = msg["chat"]["id"]
-
-                # 🧪 DEBUG trial_until (ВРЕМЕННО)
-        if text == "/trialdebug":
-            with get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                    SELECT trial_until
-                    FROM owners
-                    WHERE owner_id = %s
-                    """, (owner_id,))
-                    t = cur.fetchone()
-
-            send_text(
-                chat_id,
-                f"DEBUG trial_until:\n<code>{t[0] if t else 'NULL'}</code>"
-            )
-            return "ok"
-
         
         if text == "/settings" or text == f"/settings@{BOT_USERNAME}":
             send_text(chat_id, settings_text(), settings_markup(owner_id))
