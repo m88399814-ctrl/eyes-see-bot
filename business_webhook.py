@@ -8,6 +8,7 @@ import requests
 import html
 from flask import Flask, request
 from urllib.parse import quote
+from datetime import timedelta
 
 SUPPORT_TEXT = "Здравствуйте. Вопрос по поводу EyesSee:\n\n"
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -279,6 +280,32 @@ def has_access(owner_id: int) -> bool:
             """, (owner_id,))
             r = cur.fetchone()
             return bool(r[0]) if r else False
+
+def get_trial_dates(owner_id: int):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    trial_until
+                FROM owners
+                WHERE owner_id = %s
+                LIMIT 1
+            """, (owner_id,))
+            r = cur.fetchone()
+
+    if not r or not r[0]:
+        return "—", "—"
+
+    end_dt = r[0]
+    start_dt = end_dt - timedelta(days=14)
+
+    return (
+        start_dt.strftime("%Y-%m-%d"),
+        end_dt.strftime("%Y-%m-%d")
+    )
+
+def get_ref_link(owner_id: int):
+    return f"https://t.me/{BOT_USERNAME}?start=ref_{owner_id}"
 # ================= SETTINGS: DELETED MESSAGES =================
 
 def is_deleted_enabled(owner_id: int) -> bool:
