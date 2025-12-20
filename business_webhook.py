@@ -786,8 +786,8 @@ def trial_expired_text(start_date: str, end_date: str, ref_link: str):
         f"<b>Начало:</b> {start_date}\n"
         f"<b>Конец:</b> {end_date}\n\n"
         "Ты можешь <b>бесплатно</b> продлить подписку ещё на 14 дней, "
-        "если 2 твоих друга с Telegram Premium запустят и подключат бота по твоей ссылке:\n\n"
-        f"> {ref_link}\n\n"
+        "если 2 твоих друга с Telegram Premium запустят и подключат бота по твоей ссылке:\n"
+        f"<blockquote>{ref_link}</blockquote>\n\n"
         "<b>Ну, или продлить платно (см. ниже)</b>\n"
         "<b>Вопросы?</b> — /support"
     )
