@@ -375,20 +375,6 @@ def set_deleted_enabled(owner_id: int, value: bool):
         conn.commit()
 
 # ================= SETTINGS: EDITED MESSAGES =================
-
-def is_edited_enabled(owner_id: int) -> bool:
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-            SELECT edited_enabled
-            FROM owners
-            WHERE owner_id = %s
-            LIMIT 1
-            """, (owner_id,))
-            r = cur.fetchone()
-            return r[0] if r else True
-
-
 def toggle_edited_enabled(owner_id: int) -> bool:
     """
     Переключает состояние:
@@ -703,20 +689,6 @@ def deleted_settings_text(count: int):
         f"<b>Заметил удалённых сообщений:</b> {count}"
     )
 
-def deleted_settings_markup(enabled: bool):
-    return {
-        "inline_keyboard": [
-            [{
-                "text": "✅ Включено" if enabled else "🚫 Отключено",
-                "callback_data": "toggle_deleted"
-            }],
-            [{
-                "text": "◀️ Назад",
-                "callback_data": "back_settings"
-            }]
-        ]
-    }
-
 
 def deleted_settings_markup(enabled: bool):
     return {
@@ -814,10 +786,9 @@ def trial_expired_text(start_date: str, end_date: str, ref_link: str):
         f"<b>Начало:</b> {start_date}\n"
         f"<b>Конец:</b> {end_date}\n\n"
         "Ты можешь <b>бесплатно</b> продлить подписку ещё на целый месяц, "
-        "если 2 твоих друга с Telegram Premium запустят и подключат бота по твоей ссылке:\n\n"
-        f"<code>{ref_link}</code>\n\n"
+        "если 2 твоих друга с Telegram Premium запустят и подключат бота по твоей ссылке:\n"
+        f"> {ref_link}\n\n"
         "<b>Ну, или продлить платно (см. ниже)</b>\n"
-        "Звёзды можно купить на 25% дешевле в нашем сервисе Catcher Stars 🤫\n\n"
         "<b>Вопросы?</b> — /support"
     )
 
@@ -826,7 +797,11 @@ def trial_expired_markup(ref_link: str):
         "inline_keyboard": [
             [
                 {"text": "📋 Скопировать", "callback_data": "copy_ref"},
-                {"text": "📤 Поделиться", "switch_inline_query": ""}
+                {"text": "📤 Поделиться", "switch_inline_query": (
+                    "EyesSee — первый бот в Telegram, который научился замечать удалённые сообщения!\n"
+                    "Подключи по моей ссылке, чтобы получить бесплатный доступ 🎁\n\n"
+                    f"{ref_link}"
+                )}
             ],
             [
                 {"text": "⭐ Оплатить 1 месяц — 80", "callback_data": "pay_stars_1m"}
@@ -1352,7 +1327,13 @@ def webhook():
                 "reply_markup": settings_markup(owner_id)
             })
             return "ok"
-
+        if cd == "copy_ref":
+            tg("answerCallbackQuery", {
+                "callback_query_id": cq["id"],
+                "text": "Ссылка скопирована",
+                "show_alert": False
+            })
+            return "ok"
         # ♻️ Восстановить чат — ОТКРЫТЬ МЕНЮ (БЕЗ УДАЛЕНИЯ)
         if cd == "recover_menu":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
