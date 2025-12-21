@@ -789,7 +789,6 @@ def trial_expired_text(start_date: str, end_date: str, ref_link: str):
         "если 2 твоих друга с Telegram Premium запустят и подключат бота по твоей ссылке:\n"
         f"<blockquote><code>{ref_link}</code></blockquote>\n\n"
         "<b>Ну, или продлить платно (см. ниже)</b>\n"
-        "<blockquote>Если вдруг хотите оплатить другой любой валютой, пишите админу /help</blockquote>"
         "<b>Вопросы?</b> — /help"
     )
 
