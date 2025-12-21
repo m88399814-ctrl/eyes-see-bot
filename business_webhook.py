@@ -1513,13 +1513,19 @@ def webhook():
                             WHERE owner_id = %s
                         """, (owner_id,))
                     conn.commit()
-        
-                send_text(
-                    chat_id,
-                    "✅ <b>Подписка активирована!</b>\n\n"
-                    "Доступ открыт на 30 дней 👁️"
-                )
-            return "ok"
+            
+                # 🔁 ЗАМЕНЯЕМ меню оплаты
+                tg("editMessageText", {
+                    "chat_id": chat_id,
+                    "message_id": msg["message_id"] - 1,
+                    "text": "<b>✅ Подписка активирована!</b>",
+                    "parse_mode": "HTML"
+                })
+            
+                # 🚀 БОТ ГОТОВ
+                show_bot_ready(chat_id, owner_id)
+            
+                return "ok"
         if text == "/settings" or text == f"/settings@{BOT_USERNAME}":
             send_text(chat_id, settings_text(), settings_markup(owner_id))
             return "ok"
@@ -1711,18 +1717,49 @@ def webhook():
 
         if cd == "pay_stars_1m":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+        
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": (
+                    "<b>⭐ Оплата подписки за звёзды</b>\n\n"
+                    "После оплаты подписка активируется автоматически.\n\n"
+                    "Если передумал — можешь вернуться назад 👇"
+                ),
+                "parse_mode": "HTML",
+                "reply_markup": {
+                    "inline_keyboard": [
+                        [{"text": "⭐ Оплатить 1 месяц — 80", "callback_data": "stars_invoice"}],
+                        [{"text": "◀️ Назад", "callback_data": "back_to_paywall"}]
+                    ]
+                }
+            })
+        
+            return "ok"
 
+        if cd == "stars_invoice":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+
+            # 1️⃣ УДАЛЯЕМ меню "Оплата подписки за звёзды"
+            if chat_id and mid:
+                tg("deleteMessage", {
+                    "chat_id": chat_id,
+                    "message_id": mid
+                })
+
+            # 2️⃣ ОТПРАВЛЯЕМ INVOICE (Telegram Stars)
             tg("sendInvoice", {
                 "chat_id": owner_id,
                 "title": "EyesSee — подписка на 1 месяц",
                 "description": "Доступ ко всем функциям EyesSee на 30 дней",
                 "payload": "sub_1m",
-                "provider_token": "",   # ⚠️ ДОЛЖНО БЫТЬ ПУСТО (Stars)
+                "provider_token": "",   # Stars → всегда пусто
                 "currency": "XTR",
                 "prices": [
-                    {"label": "Подписка на 1 месяц", "amount": 80}
+                    {"label": "Подписка на 1 месяц", "amount": 1}
                 ]
             })
+
             return "ok"
 
         if cd == "pay_card":
@@ -1791,6 +1828,8 @@ def webhook():
             return "ok"
         
         if cd == "check_usdt":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+        
             tx_hash = check_usdt_payment(owner_id)
         
             if tx_hash:
@@ -1810,6 +1849,8 @@ def webhook():
                     "chat_id": chat_id,
                     "text": "❌ Платёж не найден. Попробуй через 1-2 минуты."
                 })
+        
+            return "ok"
         if cd == "crypto_ton":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         
