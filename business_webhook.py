@@ -795,8 +795,7 @@ def trial_expired_text(start_date: str, end_date: str, ref_link: str):
 def trial_expired_markup(ref_link: str):
     share_text = (
         "EyesSee — первый бот в Telegram, который научился замечать удалённые сообщения!\n"
-        "Подключи по моей ссылке, чтобы получить бесплатный доступ 🎁\n\n"
-        f"{ref_link}"
+        "Подключи по моей ссылке, чтобы получить бесплатный доступ 🎁"
     )
 
     return {
@@ -804,7 +803,11 @@ def trial_expired_markup(ref_link: str):
             [
                 {
                     "text": "📤 Поделиться",
-                    "url": f"tg://share?text={quote(share_text)}"
+                    "url": (
+                        "https://t.me/share/url?"
+                        f"url={quote(ref_link)}"
+                        f"&text={quote(share_text)}"
+                    )
                 }
             ],
             [
