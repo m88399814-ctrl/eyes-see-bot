@@ -818,6 +818,28 @@ def trial_expired_markup(ref_link: str):
             ]
         ]
     }
+
+def pay_card_text():
+    return (
+        "💳 <b>Оплата картой</b>\n\n"
+        "Нажми кнопку ниже — откроется страница оплаты.\n"
+        "После успешной оплаты бот автоматически активирует подписку ✅\n\n"
+        "<blockquote>"
+        "<b>Проблемы с оплатой ?</b>\n"
+        "Обратись к нам — /help"
+        "</blockquote>"
+    )
+
+def pay_card_markup(owner_id: int):
+    payment_id = uuid.uuid4().hex
+    pay_url = f"https://eyes-see-bot.onrender.com/pay/card?pid={payment_id}&uid={owner_id}"
+
+    return {
+        "inline_keyboard": [
+            [{"text": "💳 Перейти к оплате", "url": pay_url}],
+            [{"text": "⬅️ Назад", "callback_data": "back_to_paywall"}]
+        ]
+    }
 # ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
@@ -1333,6 +1355,9 @@ def webhook():
 
         owner_id = (cq.get("from") or {}).get("id", 0)
         cd = cq.get("data") or ""
+
+        
+        
         # ⚙️ НАСТРОЙКИ
         if cd == "deleted_settings":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
@@ -1382,22 +1407,27 @@ def webhook():
         if cd == "pay_card":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         
-            payment_id = uuid.uuid4().hex
-        
-            pay_url = f"https://eyes-see-bot.onrender.com/pay/card?pid={payment_id}&uid={owner_id}"
-        
-            tg("sendMessage", {
+            tg("editMessageText", {
                 "chat_id": chat_id,
-                "text": (
-                    "<b>💳 Оплата картой</b>\n\n"
-                    "Нажми кнопку ниже, чтобы оплатить подписку на 1 месяц 👁️"
-                ),
+                "message_id": mid,
+                "text": pay_card_text(),
                 "parse_mode": "HTML",
-                "reply_markup": {
-                    "inline_keyboard": [[
-                        {"text": "💳 Перейти к оплате", "url": pay_url}
-                    ]]
-                }
+                "reply_markup": pay_card_markup(owner_id)
+            })
+            return "ok"
+
+        if cd == "back_to_paywall":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+        
+            start_date, end_date = get_trial_dates(owner_id)
+            ref_link = get_ref_link(owner_id)
+        
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": trial_expired_text(start_date, end_date, ref_link),
+                "parse_mode": "HTML",
+                "reply_markup": trial_expired_markup(ref_link)
             })
             return "ok"
         
