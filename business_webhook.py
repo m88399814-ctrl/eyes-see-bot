@@ -407,6 +407,10 @@ def check_ton_payment(owner_id: int):
         
             for m in msgs:
                 value = int(m.get("value", 0))
+
+                # fallback — если value = 0, берём value всей транзакции
+                if value == 0:
+                    value = int(tx.get("value", 0))
         
                 msg = ""
                 if "message" in m and m["message"]:
