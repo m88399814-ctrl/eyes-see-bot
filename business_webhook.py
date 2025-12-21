@@ -783,8 +783,8 @@ def help_markup():
 def trial_expired_text(start_date: str, end_date: str, ref_link: str):
     return (
         "<b>Твой пробный период закончился</b>\n\n"
-        f"<b>Начало:</b><code>{start_date}</code>\n"
-        f"<b>Конец:</b><code>{end_date}</code>\n\n"
+        f"<b>Начало:</b> <code>{start_date}</code>\n"
+        f"<b>Конец:</b> <code>{end_date}</code>\n\n"
         "Ты можешь <b>бесплатно</b> продлить подписку ещё на 14 дней, "
         "если 2 твоих друга с Telegram Premium запустят и подключат бота по твоей ссылке:\n"
         f"<blockquote><code>{ref_link}</code></blockquote>\n\n"
