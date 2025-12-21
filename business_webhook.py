@@ -658,7 +658,7 @@ def setup_menu():
         "commands": [
             {"command": "start", "description": "🔄 Перезапустить бота"},
             {"command": "settings", "description": "⚙️ Настройки"},
-            {"command": "support", "description": "🆘 Поддержка"}
+            {"command": "help", "description": "🆘 Поддержка"}
         ]
     })
 def settings_markup(owner_id: int):
@@ -789,8 +789,8 @@ def trial_expired_text(start_date: str, end_date: str, ref_link: str):
         "если 2 твоих друга с Telegram Premium запустят и подключат бота по твоей ссылке:\n"
         f"<blockquote><code>{ref_link}</code></blockquote>\n\n"
         "<b>Ну, или продлить платно (см. ниже)</b>\n"
-        "<blockquote>Если вдруг хотите оплатить другой любой валютой, пишите админу /support</blockquote>"
-        "<b>Вопросы?</b> — /support"
+        "<blockquote>Если вдруг хотите оплатить другой любой валютой, пишите админу /help</blockquote>"
+        "<b>Вопросы?</b> — /help"
     )
 
 def trial_expired_markup(ref_link: str):
@@ -1164,7 +1164,7 @@ def webhook():
             send_text(chat_id, settings_text(), settings_markup(owner_id))
             return "ok"
             
-        if text == "/support" or text == f"/support@{BOT_USERNAME}":
+        if text == "/help" or text == f"/help@{BOT_USERNAME}":
             send_text(chat_id, help_text(), help_markup())
             return "ok"
         if text.startswith("/start"):
