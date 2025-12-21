@@ -1505,26 +1505,19 @@ def webhook():
             payload = msg["successful_payment"]["invoice_payload"]
         
             if payload == "sub_1m":
-                with get_db() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("""
-                            UPDATE owners
-                            SET sub_until = NOW() + INTERVAL '30 days'
-                            WHERE owner_id = %s
-                        """, (owner_id,))
-                    conn.commit()
-            
-                # 🔁 ЗАМЕНЯЕМ меню оплаты
-                tg("editMessageText", {
-                    "chat_id": chat_id,
-                    "message_id": msg["message_id"] - 1,
-                    "text": "<b>✅ Подписка активирована!</b>",
-                    "parse_mode": "HTML"
-                })
-            
-                # 🚀 БОТ ГОТОВ
+                activate_subscription(owner_id)
+        
+                # ✅ ЯВНОЕ СООБЩЕНИЕ О АКТИВАЦИИ
+                send_text(
+                    chat_id,
+                    "<b>✅ Подписка активирована!</b>\n\n"
+                    "Спасибо за оплату 🙌\n"
+                    "Доступ открыт на <b>30 дней</b>."
+                )
+        
+                # 🚀 ПОКАЗЫВАЕМ ГОТОВНОСТЬ БОТА
                 show_bot_ready(chat_id, owner_id)
-            
+        
                 return "ok"
         if text == "/settings" or text == f"/settings@{BOT_USERNAME}":
             send_text(chat_id, settings_text(), settings_markup(owner_id))
@@ -1723,13 +1716,13 @@ def webhook():
                 "message_id": mid,
                 "text": (
                     "<b>⭐ Оплата подписки за звёзды</b>\n\n"
-                    "После оплаты подписка активируется автоматически.\n\n"
+                    "После оплаты подписка активируется автоматически.\n"
                     "Если передумал — можешь вернуться назад 👇"
                 ),
                 "parse_mode": "HTML",
                 "reply_markup": {
                     "inline_keyboard": [
-                        [{"text": "⭐ Оплатить 1 месяц — 80", "callback_data": "stars_invoice"}],
+                        [{"text": "⭐ Оплатить 80 звёзд, "callback_data": "stars_invoice"}],
                         [{"text": "◀️ Назад", "callback_data": "back_to_paywall"}]
                     ]
                 }
