@@ -1378,6 +1378,28 @@ def webhook():
                 ]
             })
             return "ok"
+
+        if cd == "pay_card":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+        
+            payment_id = uuid.uuid4().hex
+        
+            pay_url = f"https://eyes-see-bot.onrender.com/pay/card?pid={payment_id}&uid={owner_id}"
+        
+            tg("sendMessage", {
+                "chat_id": chat_id,
+                "text": (
+                    "<b>💳 Оплата картой</b>\n\n"
+                    "Нажми кнопку ниже, чтобы оплатить подписку на 1 месяц 👁️"
+                ),
+                "parse_mode": "HTML",
+                "reply_markup": {
+                    "inline_keyboard": [[
+                        {"text": "💳 Перейти к оплате", "url": pay_url}
+                    ]]
+                }
+            })
+            return "ok"
         
         if cd == "copy_ref":
             tg("answerCallbackQuery", {
@@ -1707,6 +1729,56 @@ def api_file():
     return redirect(url, code=302)
 
 
+# ================= CARD PAYMENT =================
+
+@app.route("/pay/card")
+def pay_card_page():
+    pid = request.args.get("pid")
+    uid = request.args.get("uid")
+
+    if not pid or not uid:
+        return "Ошибка оплаты", 400
+
+    return f"""
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family: Arial; text-align:center; padding:40px">
+        <h2>EyesSee — подписка на 1 месяц</h2>
+        <p>Сумма: 299 ₽</p>
+
+        <a href="/pay/success?pid={pid}&uid={uid}">
+            <button style="font-size:18px;padding:12px 24px;">
+                💳 Оплатить (ТЕСТ)
+            </button>
+        </a>
+    </body>
+    </html>
+    """
+
+@app.route("/pay/success")
+def pay_success():
+    pid = request.args.get("pid")
+    uid = request.args.get("uid")
+
+    if not pid or not uid:
+        return "Ошибка", 400
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE owners
+                SET sub_until = NOW() + INTERVAL '30 days'
+                WHERE owner_id = %s
+            """, (int(uid),))
+        conn.commit()
+
+    send_text(
+        int(uid),
+        "<b>Подписка активирована:</b> ✅\n\n"
+        "Оплата картой прошла успешно 👁️"
+    )
+
+    return "Оплата успешна. Можешь вернуться в Telegram."
    
 # ================= START =================
 
