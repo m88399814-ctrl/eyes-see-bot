@@ -695,6 +695,23 @@ def settings_markup(owner_id: int):
         ]
     }
 
+
+def show_bot_ready(chat_id: int, owner_id: int):
+    setup_menu()
+    tg("sendMessage", {
+        "chat_id": chat_id,
+        "text": (
+            "Бот работает, подключение есть — я\n"
+            "готов следить за сообщениями 👁️"
+        ),
+        "parse_mode": "HTML",
+        "reply_markup": {
+            "inline_keyboard": [[
+                {"text": "⚙️ Настройки", "callback_data": "settings"}
+            ]]
+        }
+    })
+
 def settings_text():
     return (
         "⚙️ <b>Настройки</b>\n\n"
@@ -888,7 +905,7 @@ def crypto_check_hint_block():
     return (
         "<blockquote>"
         "После перевода нажми кнопку "
-        "<b>«Проверить оплату»</b>"
+        "<b>«Проверить платёж»</b>"
         "</blockquote>"
     )
 def pay_crypto_text():
@@ -959,7 +976,7 @@ def pay_usdt_text(owner_id: int):
 def pay_ton_markup():
     return {
         "inline_keyboard": [
-            [{"text": "💎 Проверить оплату", "callback_data": "check_ton"}],
+            [{"text": "💎 Проверить платёж", "callback_data": "check_ton"}],
             [{"text": "◀️ Назад", "callback_data": "back_to_crypto"}]
         ]
     }
@@ -967,7 +984,7 @@ def pay_ton_markup():
 def pay_usdt_markup():
     return {
         "inline_keyboard": [
-            [{"text": "💵 Проверить оплату", "callback_data": "check_usdt"}],
+            [{"text": "💵 Проверить платёж", "callback_data": "check_usdt"}],
             [{"text": "◀️ Назад", "callback_data": "back_to_crypto"}]
         ]
     }
@@ -1589,21 +1606,29 @@ def webhook():
         
             ok = check_ton_payment(owner_id)
         
-            if ok:
-                activate_subscription(owner_id)
-                tg("editMessageText", {
+            # ❌ ПЛАТЁЖ НЕ НАЙДЕН
+            if not ok:
+                tg("sendMessage", {
                     "chat_id": chat_id,
-                    "message_id": mid,
-                    "text": "Платёж найден ✅\n\nПодписка активирована на 30 дней 👁️",
-                    "parse_mode": "HTML",
-                    "reply_markup": trial_expired_markup(get_ref_link(owner_id))
+                    "text": "❌ Платёж не найден. Попробуй через 1-2 минуты.",
+                    "parse_mode": "HTML"
                 })
-            else:
-                tg("answerCallbackQuery", {
-                    "callback_query_id": cq["id"],
-                    "text": "Платёж не найден. Попробуй через 1-2 минуты.",
-                    "show_alert": True
-                })
+                return "ok"
+        
+            # ✅ ПЛАТЁЖ НАЙДЕН
+            activate_subscription(owner_id)
+        
+            # 1️⃣ Меняем текущее меню
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": "<b>Платёж найден ✅</b>",
+                "parse_mode": "HTML"
+            })
+        
+            # 2️⃣ Отправляем сообщение «бот готов»
+            show_bot_ready(chat_id, owner_id)
+        
             return "ok"
         
         if cd == "check_usdt":
@@ -1611,21 +1636,25 @@ def webhook():
         
             ok = check_usdt_payment(owner_id)
         
-            if ok:
-                activate_subscription(owner_id)
-                tg("editMessageText", {
+            if not ok:
+                tg("sendMessage", {
                     "chat_id": chat_id,
-                    "message_id": mid,
-                    "text": "Платёж найден ✅\n\nПодписка активирована на 30 дней 👁️",
-                    "parse_mode": "HTML",
-                    "reply_markup": trial_expired_markup(get_ref_link(owner_id))
+                    "text": "❌ Платёж не найден. Попробуй через 1-2 минуты.",
+                    "parse_mode": "HTML"
                 })
-            else:
-                tg("answerCallbackQuery", {
-                    "callback_query_id": cq["id"],
-                    "text": "Платёж не найден. Попробуй через 1-2 минуты.",
-                    "show_alert": True
-                })
+                return "ok"
+        
+            activate_subscription(owner_id)
+        
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": "<b>Платёж найден ✅</b>",
+                "parse_mode": "HTML"
+            })
+        
+            show_bot_ready(chat_id, owner_id)
+        
             return "ok"
         if cd == "crypto_ton":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
@@ -1650,7 +1679,17 @@ def webhook():
                 "reply_markup": pay_usdt_markup()
             })
             return "ok"
+        if cd == "back_to_crypto":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": pay_crypto_text(),
+                "parse_mode": "HTML",
+                "reply_markup": pay_crypto_markup()
+            })
+            return "ok"
         if cd == "copy_ref":
             tg("answerCallbackQuery", {
                 "callback_query_id": cq["id"],
