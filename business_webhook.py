@@ -814,11 +814,13 @@ def trial_expired_markup(ref_link: str):
                 {"text": "⭐ Оплатить 1 месяц — 80", "callback_data": "pay_stars_1m"}
             ],
             [
+                {"text": "💎 Crypto Bot", "callback_data": "pay_crypto"}
+            ],
+            [
                 {"text": "💳 Оплатить картой", "callback_data": "pay_card"}
             ]
         ]
     }
-
 
 def pay_card_unavailable_text():
     return (
@@ -1214,7 +1216,7 @@ def webhook():
         
                 send_text(
                     chat_id,
-                    "<b>Подписка активирована:</b> ✅\n\n"
+                    "✅ <b>Подписка активирована!</b>\n\n"
                     "Доступ открыт на 30 дней 👁️"
                 )
             return "ok"
