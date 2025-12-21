@@ -392,22 +392,32 @@ def check_ton_payment(owner_id: int):
         txs = data.get("result", [])
 
         for tx in txs:
-            in_msg = tx.get("in_msg")
-            if not in_msg:
-                continue
-
-            value = int(in_msg.get("value", 0))
-            msg = (in_msg.get("message") or "").strip()
-
             txid = tx.get("transaction_id") or {}
             tx_hash = txid.get("hash")
             if not tx_hash:
                 continue
-
-            if value == amount_nano and msg == comment_expected:
-                if is_payment_used(tx_hash):
-                    return None  # уже использован
-                return tx_hash
+        
+            msgs = []
+        
+            if tx.get("in_msg"):
+                msgs.append(tx["in_msg"])
+        
+            for m in tx.get("out_msgs", []):
+                msgs.append(m)
+        
+            for m in msgs:
+                value = int(m.get("value", 0))
+        
+                msg = ""
+                if "message" in m and m["message"]:
+                    msg = m["message"].strip()
+                elif "decoded_body" in m:
+                    msg = m["decoded_body"].get("text", "").strip()
+        
+                if value == amount_nano and msg == comment_expected:
+                    if is_payment_used(tx_hash):
+                        return None
+                    return tx_hash
 
         return None
 
