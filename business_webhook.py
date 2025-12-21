@@ -1722,7 +1722,7 @@ def webhook():
                 "parse_mode": "HTML",
                 "reply_markup": {
                     "inline_keyboard": [
-                        [{"text": "⭐ Оплатить 80 звёзд, "callback_data": "stars_invoice"}],
+                        [{"text": "⭐ Оплатить 80 звёзд", "callback_data": "stars_invoice"}],
                         [{"text": "◀️ Назад", "callback_data": "back_to_paywall"}]
                     ]
                 }
