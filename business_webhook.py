@@ -1362,8 +1362,6 @@ def webhook():
         owner_id = (cq.get("from") or {}).get("id", 0)
         cd = cq.get("data") or ""
 
-        
-        
         # ⚙️ НАСТРОЙКИ
         if cd == "deleted_settings":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
@@ -1683,10 +1681,10 @@ def webhook():
             return "ok"
 
 
-        
         tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         return "ok"
         
+    return "ok"  
   
 # ================= WEB APP API =================
 @app.route("/api/chat", methods=["GET"])
@@ -1763,58 +1761,6 @@ def api_file():
     url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
 
     return redirect(url, code=302)
-
-
-# ================= CARD PAYMENT =================
-
-@app.route("/pay/card")
-def pay_card_page():
-    pid = request.args.get("pid")
-    uid = request.args.get("uid")
-
-    if not pid or not uid:
-        return "Ошибка оплаты", 400
-
-    return f"""
-    <html>
-    <head><meta charset="utf-8"></head>
-    <body style="font-family: Arial; text-align:center; padding:40px">
-        <h2>EyesSee — подписка на 1 месяц</h2>
-        <p>Сумма: 299 ₽</p>
-
-        <a href="/pay/success?pid={pid}&uid={uid}">
-            <button style="font-size:18px;padding:12px 24px;">
-                💳 Оплатить (ТЕСТ)
-            </button>
-        </a>
-    </body>
-    </html>
-    """
-
-@app.route("/pay/success")
-def pay_success():
-    pid = request.args.get("pid")
-    uid = request.args.get("uid")
-
-    if not pid or not uid:
-        return "Ошибка", 400
-
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE owners
-                SET sub_until = NOW() + INTERVAL '30 days'
-                WHERE owner_id = %s
-            """, (int(uid),))
-        conn.commit()
-
-    send_text(
-        int(uid),
-        "<b>Подписка активирована:</b> ✅\n\n"
-        "Оплата картой прошла успешно 👁️"
-    )
-
-    return "Оплата успешна. Можешь вернуться в Telegram."
    
 # ================= START =================
 
