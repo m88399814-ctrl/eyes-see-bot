@@ -306,6 +306,28 @@ def get_trial_dates(owner_id: int):
 
 def get_ref_link(owner_id: int):
     return f"https://t.me/{BOT_USERNAME}?start=ref_{owner_id}"
+
+# ================= CRYPTO PAYMENTS (STUB) =================
+
+def activate_subscription(owner_id: int):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE owners
+                SET sub_until = NOW() + INTERVAL '30 days'
+                WHERE owner_id = %s
+            """, (owner_id,))
+        conn.commit()
+
+
+def check_ton_payment(owner_id: int) -> bool:
+    # TODO: тут будет реальная проверка TON
+    return False
+
+
+def check_usdt_payment(owner_id: int) -> bool:
+    # TODO: тут будет реальная проверка USDT
+    return False
 # ================= SETTINGS: DELETED MESSAGES =================
 
 def is_deleted_enabled(owner_id: int) -> bool:
@@ -814,7 +836,7 @@ def trial_expired_markup(ref_link: str):
                 {"text": "⭐ Оплатить 1 месяц — 80", "callback_data": "pay_stars_1m"}
             ],
             [
-                {"text": "💎 Crypto Bot", "callback_data": "pay_crypto"}
+                {"text": "💎 Оплатить криптовалютой", "callback_data": "pay_crypto"}
             ],
             [
                 {"text": "💳 Оплатить картой", "callback_data": "pay_card"}
@@ -853,9 +875,25 @@ def pay_card_unavailable_markup():
     }
 
 
+def crypto_warning_block():
+    return (
+        "<blockquote>"
+        "<b>⚠️ Важно:</b> "
+        "если указать неточную сумму или не добавить комментарий к платежу, "
+        "денежные средства могут быть утеряны "
+        "<b>без права возврата.</b>"
+        "</blockquote>"
+    )
+def crypto_check_hint_block():
+    return (
+        "<blockquote>"
+        "После перевода нажми кнопку "
+        "<b>«Проверить оплату»</b>"
+        "</blockquote>"
+    )
 def pay_crypto_text():
     return (
-        "<b>💎 Crypto Bot</b>\n\n"
+        "<b>💎 Оплата криптовалютой</b>\n\n"
         "Выбери валюту для оплаты\n"
         "подписки 👇"
     )
@@ -870,6 +908,61 @@ def pay_crypto_markup():
             [
                 {"text": "◀️ Назад", "callback_data": "back_to_paywall"}
             ]
+        ]
+    }
+
+# === ЗДЕСЬ ЦЕНЫ (Поменяешь на свои) ===
+TON_AMOUNT = "1"          # например "1"
+USDT_AMOUNT = "1.46"        # например "10"
+
+TON_WALLET = "UQBbZQckRBO11wIwf-5nBnsslgIfVxkb1vzWuK3YbyxDonrD"
+USDT_WALLET = "UQBbZQckRBO11wIwf-5nBnsslgIfVxkb1vzWuK3YbyxDonrD"   # если тот же — оставь тот же адрес
+
+def ton_comment(owner_id: int) -> str:
+    return f"EYESSEE_{owner_id}"
+
+def usdt_comment(owner_id: int) -> str:
+    return f"EYESSEE_{owner_id}"
+
+def pay_ton_text(owner_id: int):
+    c = ton_comment(owner_id)
+    return (
+        "<b>💎 Оплата TON</b>\n\n"
+        f"Сумма: <b>{TON_AMOUNT} TON</b>\n\n"
+        "Адрес:\n"
+        f"<code>{TON_WALLET}</code>\n\n"
+        "Комментарий (обязательно):\n"
+        f"<code>{c}</code>\n\n"
+        + crypto_check_hint_block()
+        + crypto_warning_block()
+    )
+
+def pay_ton_markup():
+    return {
+        "inline_keyboard": [
+            [{"text": "Проверить оплату", "callback_data": "check_ton"}],
+            [{"text": "◀️ Назад", "callback_data": "pay_crypto"}]
+        ]
+    }
+
+def pay_usdt_text(owner_id: int):
+    c = usdt_comment(owner_id)
+    return (
+        "<b>💵 Оплата USDT</b>\n\n"
+        f"Сумма: <b>{USDT_AMOUNT} USDT</b>\n\n"
+        "Адрес:\n"
+        f"<code>{USDT_WALLET}</code>\n\n"
+        "Комментарий (обязательно):\n"
+        f"<code>{c}</code>\n\n"
+        + crypto_check_hint_block()
+        + crypto_warning_block()
+    )
+
+def pay_usdt_markup():
+    return {
+        "inline_keyboard": [
+            [{"text": "Проверить оплату", "callback_data": "check_usdt"}],
+            [{"text": "◀️ Назад", "callback_data": "pay_crypto"}]
         ]
     }
 # ================= WEBHOOK =================
@@ -1470,6 +1563,85 @@ def webhook():
                 "text": trial_expired_text(start_date, end_date, ref_link),
                 "parse_mode": "HTML",
                 "reply_markup": trial_expired_markup(ref_link)
+            })
+            return "ok"
+
+        if cd == "pay_crypto":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+        
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": pay_crypto_text(),
+                "parse_mode": "HTML",
+                "reply_markup": pay_crypto_markup()
+            })
+            return "ok"
+            
+        if cd == "check_ton":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+        
+            ok = check_ton_payment(owner_id)
+        
+            if ok:
+                activate_subscription(owner_id)
+                tg("editMessageText", {
+                    "chat_id": chat_id,
+                    "message_id": mid,
+                    "text": "Платёж найден ✅\n\nПодписка активирована на 30 дней 👁️",
+                    "parse_mode": "HTML",
+                    "reply_markup": trial_expired_markup(get_ref_link(owner_id))
+                })
+            else:
+                tg("answerCallbackQuery", {
+                    "callback_query_id": cq["id"],
+                    "text": "Платёж не найден. Попробуй через 1-2 минуты.",
+                    "show_alert": True
+                })
+            return "ok"
+        
+        if cd == "check_usdt":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+        
+            ok = check_usdt_payment(owner_id)
+        
+            if ok:
+                activate_subscription(owner_id)
+                tg("editMessageText", {
+                    "chat_id": chat_id,
+                    "message_id": mid,
+                    "text": "Платёж найден ✅\n\nПодписка активирована на 30 дней 👁️",
+                    "parse_mode": "HTML",
+                    "reply_markup": trial_expired_markup(get_ref_link(owner_id))
+                })
+            else:
+                tg("answerCallbackQuery", {
+                    "callback_query_id": cq["id"],
+                    "text": "Платёж не найден. Попробуй через 1-2 минуты.",
+                    "show_alert": True
+                })
+            return "ok"
+        if cd == "crypto_ton":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+        
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": pay_ton_text(owner_id),
+                "parse_mode": "HTML",
+                "reply_markup": pay_ton_markup()
+            })
+            return "ok"
+        
+        if cd == "crypto_usdt":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+        
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": pay_usdt_text(owner_id),
+                "parse_mode": "HTML",
+                "reply_markup": pay_usdt_markup()
             })
             return "ok"
         
