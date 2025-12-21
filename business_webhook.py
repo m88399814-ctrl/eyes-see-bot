@@ -1089,7 +1089,7 @@ def pay_crypto_markup():
 
 # === ЗДЕСЬ ЦЕНЫ (Поменяешь на свои) ===
 TON_AMOUNT = "1"          # например "1"
-USDT_AMOUNT = "0.01"        # например "10"
+USDT_AMOUNT = "1.46"        # например "10"
 
 TON_WALLET = "UQBbZQckRBO11wIwf-5nBnsslgIfVxkb1vzWuK3YbyxDonrD"
 USDT_WALLET = "UQBbZQckRBO11wIwf-5nBnsslgIfVxkb1vzWuK3YbyxDonrD"   # если тот же — оставь тот же адрес
