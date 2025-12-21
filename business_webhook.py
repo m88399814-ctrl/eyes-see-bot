@@ -1163,7 +1163,7 @@ def webhook():
             send_text(chat_id, settings_text(), settings_markup(owner_id))
             return "ok"
             
-        if text == "/help" or text == f"/help@{BOT_USERNAME}":
+        if text == "/support" or text == f"/support@{BOT_USERNAME}":
             send_text(chat_id, help_text(), help_markup())
             return "ok"
         if text.startswith("/start"):
