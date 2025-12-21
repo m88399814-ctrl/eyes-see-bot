@@ -836,7 +836,7 @@ def pay_card_unavailable_markup():
         "inline_keyboard": [
             [
                 {
-                    "text": "✍️ Задать вопрос",
+                    "text": "Администратор",
                     "url": (
                         f"tg://resolve?"
                         f"domain={SUPPORT_ADMIN_USERNAME}"
