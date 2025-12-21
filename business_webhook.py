@@ -900,6 +900,16 @@ def webhook():
     
         return "ok"
 
+    # ⭐ Telegram Stars — pre checkout
+    if "pre_checkout_query" in data:
+        pcq = data["pre_checkout_query"]
+
+        tg("answerPreCheckoutQuery", {
+            "pre_checkout_query_id": pcq["id"],
+            "ok": True
+        })
+        return "ok"
+
     
     # 2) входящее сообщение
     if "business_message" in data:
@@ -1158,7 +1168,25 @@ def webhook():
         owner_id = msg["from"]["id"]
         text = (msg.get("text") or "").strip()
         chat_id = msg["chat"]["id"]
-
+        if "successful_payment" in msg:
+            payload = msg["successful_payment"]["invoice_payload"]
+        
+            if payload == "sub_1m":
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            UPDATE owners
+                            SET sub_until = NOW() + INTERVAL '30 days'
+                            WHERE owner_id = %s
+                        """, (owner_id,))
+                    conn.commit()
+        
+                send_text(
+                    chat_id,
+                    "✅ <b>Подписка активирована!</b>\n\n"
+                    "Доступ открыт на 30 дней 👁️"
+                )
+            return "ok"
         if text == "/settings" or text == f"/settings@{BOT_USERNAME}":
             send_text(chat_id, settings_text(), settings_markup(owner_id))
             return "ok"
@@ -1334,6 +1362,23 @@ def webhook():
                 "reply_markup": settings_markup(owner_id)
             })
             return "ok"
+
+        if cd == "pay_stars_1m":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+
+            tg("sendInvoice", {
+                "chat_id": owner_id,
+                "title": "EyesSee — подписка на 1 месяц",
+                "description": "Доступ ко всем функциям EyesSee на 30 дней",
+                "payload": "sub_1m",
+                "provider_token": "",   # ⚠️ ДОЛЖНО БЫТЬ ПУСТО (Stars)
+                "currency": "XTR",
+                "prices": [
+                    {"label": "Подписка на 1 месяц", "amount": 80}
+                ]
+            })
+            return "ok"
+        
         if cd == "copy_ref":
             tg("answerCallbackQuery", {
                 "callback_query_id": cq["id"],
