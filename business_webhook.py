@@ -16,6 +16,8 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 BOT_USERNAME = "EyesSeeBot"  # без @
 CONNECT_PHOTO_URL = "https://eyes-see-bot.onrender.com/static/connect_bot.jpg"
 SUPPORT_ADMIN_USERNAME = "eyesseeadmin"  # <-- сюда ID админа
+TONCENTER_API_KEY = os.getenv("TONCENTER_API_KEY")  # ты уже добавил в Render
+TONCENTER_URL = "https://toncenter.com/api/v2"
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 
@@ -146,6 +148,33 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT NOW()
             )
             """)
+
+            # ================================
+            # 🔐 ИСПОЛЬЗОВАННЫЕ ПЛАТЕЖИ (TON)
+            # ================================
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS used_payments (
+                tx_hash TEXT PRIMARY KEY,
+                owner_id BIGINT NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+            """)
+        conn.commit()
+
+def is_payment_used(tx_hash: str) -> bool:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM used_payments WHERE tx_hash = %s LIMIT 1", (tx_hash,))
+            return cur.fetchone() is not None
+
+def mark_payment_used(tx_hash: str, owner_id: int):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO used_payments (tx_hash, owner_id)
+                VALUES (%s, %s)
+                ON CONFLICT (tx_hash) DO NOTHING
+            """, (tx_hash, owner_id))
         conn.commit()
 
 def cleanup_old():
@@ -320,9 +349,71 @@ def activate_subscription(owner_id: int):
         conn.commit()
 
 
-def check_ton_payment(owner_id: int) -> bool:
-    # TODO: тут будет реальная проверка TON
-    return False
+def check_ton_payment(owner_id: int):
+    """
+    Ищет входящий платеж на TON_WALLET:
+    - сумма = TON_AMOUNT
+    - комментарий = EYESSEE_<owner_id>
+    Возвращает tx_hash если найдено, иначе None
+    """
+
+    if not TONCENTER_API_KEY:
+        print("TONCENTER_API_KEY is missing")
+        return None
+
+    comment_expected = f"EYESSEE_{owner_id}"
+
+    try:
+        amount_nano = int(float(TON_AMOUNT) * 1_000_000_000)
+    except Exception:
+        print("Bad TON_AMOUNT:", TON_AMOUNT)
+        return None
+
+    params = {
+        "address": TON_WALLET,
+        "limit": 20
+    }
+
+    headers = {
+        "X-API-Key": TONCENTER_API_KEY
+    }
+
+    try:
+        r = requests.get(f"{TONCENTER_URL}/getTransactions", params=params, headers=headers, timeout=15)
+        if not r.ok:
+            print("TONCENTER HTTP:", r.status_code, r.text)
+            return None
+
+        data = r.json()
+        if not data.get("ok"):
+            print("TONCENTER NOT OK:", data)
+            return None
+
+        txs = data.get("result", [])
+
+        for tx in txs:
+            in_msg = tx.get("in_msg")
+            if not in_msg:
+                continue
+
+            value = int(in_msg.get("value", 0))
+            msg = (in_msg.get("message") or "").strip()
+
+            txid = tx.get("transaction_id") or {}
+            tx_hash = txid.get("hash")
+            if not tx_hash:
+                continue
+
+            if value == amount_nano and msg == comment_expected:
+                if is_payment_used(tx_hash):
+                    return None  # уже использован
+                return tx_hash
+
+        return None
+
+    except Exception as e:
+        print("TON CHECK ERROR:", e)
+        return None
 
 
 def check_usdt_payment(owner_id: int) -> bool:
@@ -929,7 +1020,7 @@ def pay_crypto_markup():
     }
 
 # === ЗДЕСЬ ЦЕНЫ (Поменяешь на свои) ===
-TON_AMOUNT = "1"          # например "1"
+TON_AMOUNT = "0.001"          # например "1"
 USDT_AMOUNT = "1.46"        # например "10"
 
 TON_WALLET = "UQBbZQckRBO11wIwf-5nBnsslgIfVxkb1vzWuK3YbyxDonrD"
@@ -1604,30 +1695,26 @@ def webhook():
         if cd == "check_ton":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         
-            ok = check_ton_payment(owner_id)
+            tx_hash = check_ton_payment(owner_id)
         
-            # ❌ ПЛАТЁЖ НЕ НАЙДЕН
-            if not ok:
-                tg("sendMessage", {
+            if tx_hash:
+                mark_payment_used(tx_hash, owner_id)
+                activate_subscription(owner_id)
+        
+                tg("editMessageText", {
                     "chat_id": chat_id,
-                    "text": "❌ Платёж не найден. Попробуй через 1-2 минуты.",
+                    "message_id": mid,
+                    "text": "<b>Платёж найден ✅</b>",
                     "parse_mode": "HTML"
                 })
-                return "ok"
         
-            # ✅ ПЛАТЁЖ НАЙДЕН
-            activate_subscription(owner_id)
+                show_bot_ready(chat_id, owner_id)
         
-            # 1️⃣ Меняем текущее меню
-            tg("editMessageText", {
-                "chat_id": chat_id,
-                "message_id": mid,
-                "text": "<b>Платёж найден ✅</b>",
-                "parse_mode": "HTML"
-            })
-        
-            # 2️⃣ Отправляем сообщение «бот готов»
-            show_bot_ready(chat_id, owner_id)
+            else:
+                tg("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": "❌ Платёж не найден. Попробуй через 1-2 минуты."
+                })
         
             return "ok"
         
