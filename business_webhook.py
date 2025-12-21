@@ -931,7 +931,7 @@ def pay_ton_text(owner_id: int):
     return (
         "<b>💎 Оплата TON</b>\n\n"
         "<b>Сумма:</b>\n"
-        f"<blockquote><code>{TON_AMOUNT_NUM}</code> TON</blockquote>\n\n"
+        f"<blockquote><code>{TON_AMOUNT}</code> TON</blockquote>\n\n"
         "<b>Адрес:</b>\n"
         f"<blockquote><code>{TON_WALLET}</code></blockquote>\n\n"
         "<b>Комментарий (обязательно):</b>\n"
@@ -947,7 +947,7 @@ def pay_usdt_text(owner_id: int):
     return (
         "<b>💵 Оплата USDT</b>\n\n"
         "<b>Сумма:</b>\n"
-        f"<blockquote><code>{USDT_AMOUNT_NUM}</code> USDT</blockquote>\n\n"
+        f"<blockquote><code>{USDT_AMOUNT}</code> USDT</blockquote>\n\n"
         "<b>Адрес:</b>\n"
         f"<blockquote><code>{USDT_WALLET}</code></blockquote>\n\n"
         "<b>Комментарий (обязательно):</b>\n"
