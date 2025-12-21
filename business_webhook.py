@@ -819,26 +819,31 @@ def trial_expired_markup(ref_link: str):
         ]
     }
 
-def pay_card_text():
+
+def pay_card_unavailable_text():
     return (
-        "💳 <b>Оплата картой</b>\n\n"
-        "Нажми кнопку ниже — откроется страница оплаты. После успешной\n"
-        "оплаты бот автоматически активирует\n"
-        "подписку.\n"
-        "<blockquote>"
-        "<b>Проблемы с оплатой ?</b>\n"
-        "Обратись к нам — /help"
-        "</blockquote>"
+        "<b>На данный момент оплата картой через бота временно недоступна.</b>\n\n"
+        "Если ты хочешь оплатить подписку\n"
+        "картой, обратись к администратору 👇"
     )
 
-def pay_card_markup(owner_id: int):
-    payment_id = uuid.uuid4().hex
-    pay_url = f"https://eyes-see-bot.onrender.com/pay/card?pid={payment_id}&uid={owner_id}"
 
+def pay_card_unavailable_markup():
     return {
         "inline_keyboard": [
-            [{"text": "💳 Перейти к оплате", "url": pay_url}],
-            [{"text": "⬅️ Назад", "callback_data": "back_to_paywall"}]
+            [
+                {
+                    "text": "✍️ Задать вопрос",
+                    "url": (
+                        f"tg://resolve?"
+                        f"domain={SUPPORT_ADMIN_USERNAME}"
+                        f"&text={quote(SUPPORT_TEXT)}"
+                    )
+                }
+            ],
+            [
+                {"text": "◀️ Назад", "callback_data": "back_to_paywall"}
+            ]
         ]
     }
 # ================= WEBHOOK =================
@@ -1411,12 +1416,12 @@ def webhook():
             tg("editMessageText", {
                 "chat_id": chat_id,
                 "message_id": mid,
-                "text": pay_card_text(),
+                "text": pay_card_unavailable_text(),
                 "parse_mode": "HTML",
-                "reply_markup": pay_card_markup(owner_id)
+                "reply_markup": pay_card_unavailable_markup()
             })
             return "ok"
-
+            
         if cd == "back_to_paywall":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         
