@@ -804,10 +804,7 @@ def trial_expired_markup(ref_link: str):
             [
                 {
                     "text": "📤 Поделиться",
-                    "url": (
-                        "https://t.me/share/url?"
-                        f"text={quote(share_text)}"
-                    )
+                    "url": f"tg://share?text={quote(share_text)}"
                 }
             ],
             [
