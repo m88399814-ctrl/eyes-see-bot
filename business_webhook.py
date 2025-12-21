@@ -851,6 +851,27 @@ def pay_card_unavailable_markup():
             ]
         ]
     }
+
+
+def pay_crypto_text():
+    return (
+        "<b>💎 Crypto Bot</b>\n\n"
+        "Выбери валюту для оплаты\n"
+        "подписки 👇"
+    )
+
+def pay_crypto_markup():
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "💎 TON", "callback_data": "crypto_ton"},
+                {"text": "💵 USDT", "callback_data": "crypto_usdt"}
+            ],
+            [
+                {"text": "◀️ Назад", "callback_data": "back_to_paywall"}
+            ]
+        ]
+    }
 # ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
@@ -1367,6 +1388,18 @@ def webhook():
         owner_id = (cq.get("from") or {}).get("id", 0)
         cd = cq.get("data") or ""
 
+        if cd == "pay_crypto":
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+        
+            tg("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": mid,
+                "text": pay_crypto_text(),
+                "parse_mode": "HTML",
+                "reply_markup": pay_crypto_markup()
+            })
+            return "ok"
+        
         # ⚙️ НАСТРОЙКИ
         if cd == "deleted_settings":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
