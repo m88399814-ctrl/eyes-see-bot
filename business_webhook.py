@@ -1374,7 +1374,7 @@ def webhook():
                 "provider_token": "",   # ⚠️ ДОЛЖНО БЫТЬ ПУСТО (Stars)
                 "currency": "XTR",
                 "prices": [
-                    {"label": "Подписка на 1 месяц", "amount": 80}
+                    {"label": "Подписка на 1 месяц", "amount": 1}
                 ]
             })
             return "ok"
