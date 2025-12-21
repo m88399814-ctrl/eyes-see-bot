@@ -429,10 +429,64 @@ def check_ton_payment(owner_id: int):
         print("TON CHECK ERROR:", e)
         return None
 
+def check_usdt_payment(owner_id: int):
+    comment_expected = f"EYESSEE_{owner_id}"
+    amount_units = int(float(USDT_AMOUNT) * (10 ** USDT_DECIMALS))
 
-def check_usdt_payment(owner_id: int) -> bool:
-    # TODO: тут будет реальная проверка USDT
-    return False
+    headers = {
+        "X-API-Key": TONCENTER_API_KEY
+    }
+
+    # 1️⃣ получаем jetton wallet
+    r = requests.get(
+        f"{TONCENTER_URL}/getJettonWallet",
+        params={
+            "address": USDT_WALLET,
+            "jetton": USDT_JETTON_MASTER
+        },
+        headers=headers,
+        timeout=15
+    )
+
+    if not r.ok:
+        return None
+
+    data = r.json()
+    jetton_wallet = data.get("result", {}).get("address")
+    if not jetton_wallet:
+        return None
+
+    # 2️⃣ получаем jetton transfers
+    r = requests.get(
+        f"{TONCENTER_URL}/getJettonTransfers",
+        params={
+            "address": jetton_wallet,
+            "limit": 20
+        },
+        headers=headers,
+        timeout=15
+    )
+
+    if not r.ok:
+        return None
+
+    data = r.json()
+    transfers = data.get("result", [])
+
+    for t in transfers:
+        if t.get("destination") != jetton_wallet:
+            continue
+
+        amount = int(t.get("amount", 0))
+        comment = (t.get("comment") or "").strip()
+        tx_hash = t.get("transaction_hash")
+
+        if amount == amount_units and comment == comment_expected:
+            if is_payment_used(tx_hash):
+                return None
+            return tx_hash
+
+    return None
 # ================= SETTINGS: DELETED MESSAGES =================
 
 def is_deleted_enabled(owner_id: int) -> bool:
@@ -1034,11 +1088,15 @@ def pay_crypto_markup():
     }
 
 # === ЗДЕСЬ ЦЕНЫ (Поменяешь на свои) ===
-TON_AMOUNT = "0.001"          # например "1"
-USDT_AMOUNT = "1.46"        # например "10"
+TON_AMOUNT = "1"          # например "1"
+USDT_AMOUNT = "0.01"        # например "10"
 
 TON_WALLET = "UQBbZQckRBO11wIwf-5nBnsslgIfVxkb1vzWuK3YbyxDonrD"
 USDT_WALLET = "UQBbZQckRBO11wIwf-5nBnsslgIfVxkb1vzWuK3YbyxDonrD"   # если тот же — оставь тот же адрес
+
+# === USDT JETTON ===
+USDT_JETTON_MASTER = "EQCxE6mUtQJKFnGfaROTKOt1lZb0uZ2C6J8uY8FZ4kZ9FzZ5"
+USDT_DECIMALS = 6
 
 def ton_comment(owner_id: int) -> str:
     return f"EYESSEE_{owner_id}"
@@ -1733,30 +1791,25 @@ def webhook():
             return "ok"
         
         if cd == "check_usdt":
-            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
+            tx_hash = check_usdt_payment(owner_id)
         
-            ok = check_usdt_payment(owner_id)
+            if tx_hash:
+                mark_payment_used(tx_hash, owner_id)
+                activate_subscription(owner_id)
         
-            if not ok:
-                tg("sendMessage", {
+                tg("editMessageText", {
                     "chat_id": chat_id,
-                    "text": "❌ Платёж не найден. Попробуй через 1-2 минуты.",
+                    "message_id": mid,
+                    "text": "<b>Платёж найден ✅</b>",
                     "parse_mode": "HTML"
                 })
-                return "ok"
         
-            activate_subscription(owner_id)
-        
-            tg("editMessageText", {
-                "chat_id": chat_id,
-                "message_id": mid,
-                "text": "<b>Платёж найден ✅</b>",
-                "parse_mode": "HTML"
-            })
-        
-            show_bot_ready(chat_id, owner_id)
-        
-            return "ok"
+                show_bot_ready(chat_id, owner_id)
+            else:
+                tg("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": "❌ Платёж не найден. Попробуй через 1-2 минуты."
+                })
         if cd == "crypto_ton":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         
