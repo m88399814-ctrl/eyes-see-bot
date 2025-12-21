@@ -658,7 +658,7 @@ def setup_menu():
         "commands": [
             {"command": "start", "description": "🔄 Перезапустить бота"},
             {"command": "settings", "description": "⚙️ Настройки"},
-            {"command": "help", "description": "🆘 Поддержка"}
+            {"command": "support", "description": "🆘 Поддержка"}
         ]
     })
 def settings_markup(owner_id: int):
