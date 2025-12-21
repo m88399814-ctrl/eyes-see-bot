@@ -924,45 +924,51 @@ def ton_comment(owner_id: int) -> str:
 def usdt_comment(owner_id: int) -> str:
     return f"EYESSEE_{owner_id}"
 
+# ====== TON TEXT (заголовки НЕ в цитате, значения в цитате) ======
 def pay_ton_text(owner_id: int):
     c = ton_comment(owner_id)
+
     return (
         "<b>💎 Оплата TON</b>\n\n"
-        f"Сумма: <b>{TON_AMOUNT} TON</b>\n\n"
-        "Адрес:\n"
-        f"<code>{TON_WALLET}</code>\n\n"
-        "Комментарий (обязательно):\n"
-        f"<code>{c}</code>\n\n"
-        + crypto_check_hint_block()
+        "<b>Сумма:</b>\n"
+        f"<blockquote><code>{TON_AMOUNT_NUM}</code> TON</blockquote>\n\n"
+        "<b>Адрес:</b>\n"
+        f"<blockquote><code>{TON_WALLET}</code></blockquote>\n\n"
+        "<b>Комментарий (обязательно):</b>\n"
+        f"<blockquote><code>{c}</code></blockquote>\n\n"
+        + crypto_check_hint_block() + "\n"
+        + crypto_warning_block()
+    )
+
+# ====== USDT TEXT (то же самое) ======
+def pay_usdt_text(owner_id: int):
+    c = usdt_comment(owner_id)
+
+    return (
+        "<b>💵 Оплата USDT</b>\n\n"
+        "<b>Сумма:</b>\n"
+        f"<blockquote><code>{USDT_AMOUNT_NUM}</code> USDT</blockquote>\n\n"
+        "<b>Адрес:</b>\n"
+        f"<blockquote><code>{USDT_WALLET}</code></blockquote>\n\n"
+        "<b>Комментарий (обязательно):</b>\n"
+        f"<blockquote><code>{c}</code></blockquote>\n\n"
+        + crypto_check_hint_block() + "\n"
         + crypto_warning_block()
     )
 
 def pay_ton_markup():
     return {
         "inline_keyboard": [
-            [{"text": "Проверить оплату", "callback_data": "check_ton"}],
-            [{"text": "◀️ Назад", "callback_data": "pay_crypto"}]
+            [{"text": "💎 Проверить оплату", "callback_data": "check_ton"}],
+            [{"text": "◀️ Назад", "callback_data": "back_to_crypto"}]
         ]
     }
-
-def pay_usdt_text(owner_id: int):
-    c = usdt_comment(owner_id)
-    return (
-        "<b>💵 Оплата USDT</b>\n\n"
-        f"Сумма: <b>{USDT_AMOUNT} USDT</b>\n\n"
-        "Адрес:\n"
-        f"<code>{USDT_WALLET}</code>\n\n"
-        "Комментарий (обязательно):\n"
-        f"<code>{c}</code>\n\n"
-        + crypto_check_hint_block()
-        + crypto_warning_block()
-    )
 
 def pay_usdt_markup():
     return {
         "inline_keyboard": [
-            [{"text": "Проверить оплату", "callback_data": "check_usdt"}],
-            [{"text": "◀️ Назад", "callback_data": "pay_crypto"}]
+            [{"text": "💵 Проверить оплату", "callback_data": "check_usdt"}],
+            [{"text": "◀️ Назад", "callback_data": "back_to_crypto"}]
         ]
     }
 # ================= WEBHOOK =================
