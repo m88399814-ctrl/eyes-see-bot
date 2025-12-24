@@ -1746,9 +1746,11 @@ def webhook():
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO owners (owner_id, trial_until, is_active)
-                    VALUES (%s, NOW() + INTERVAL '14 days', TRUE)
-                    ON CONFLICT (owner_id) DO NOTHING
+                    UPDATE owners
+                    SET
+                        trial_until = NOW() + INTERVAL '14 days',
+                        is_active = TRUE
+                    WHERE owner_id = %s
                 """, (owner_id,))
             conn.commit()
         # ===== START HANDLER =====
