@@ -1725,7 +1725,7 @@ def webhook():
                         "🎉 <b>Поздравляю!</b>\n\n"
                         "Два друга подключили EyesSee — тебе продлён доступ ещё на <b>14 дней</b> 🔥"
                     )
-                    show_bot_ready(inviter_id, inviter_id
+                    show_bot_ready(inviter_id, inviter_id)
             
                 return "ok"
         
