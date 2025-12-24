@@ -1771,11 +1771,7 @@ def webhook():
                             (inviter_id, owner_id)
                         )
 
-                        # 🚫 помечаем, что рефералка больше недоступна
-                        cur.execute(
-                            "UPDATE owners SET referral_used = TRUE WHERE owner_id = %s",
-                            (inviter_id,)
-                        )
+                        
                     conn.commit()
             
                 # 👉 считаем, сколько приглашено
