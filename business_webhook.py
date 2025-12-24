@@ -1411,7 +1411,7 @@ def webhook():
                     ]
                 }
             )
-        else:
+        if not is_enabled:
             send_text(owner_id, "Бот отключён 😴")
     
         return "ok"
