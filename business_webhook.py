@@ -1751,17 +1751,7 @@ def webhook():
         owner_id = msg["from"]["id"]
         text = (msg.get("text") or "").strip()
         chat_id = msg["chat"]["id"]
-        # ✅ гарантируем, что пользователь существует и у него есть trial
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE owners
-                    SET
-                        trial_until = NOW() + INTERVAL '14 days',
-                        is_active = TRUE
-                    WHERE owner_id = %s
-                """, (owner_id,))
-            conn.commit()
+        
         # ===== START HANDLER =====
 
         # ❌ если пользователь БЕЗ Telegram Premium
