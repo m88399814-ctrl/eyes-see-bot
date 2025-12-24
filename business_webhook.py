@@ -1887,7 +1887,12 @@ def webhook():
                         "text": "📊 <b>Рефералы:</b> 1 / 2",
                         "parse_mode": "HTML"
                     })
-                    msg_id = res["result"]["message_id"]
+                
+                    data = res.json()
+                    if not data.get("ok"):
+                        return "ok"
+                
+                    msg_id = data["result"]["message_id"]
                 
                     with get_db() as conn:
                         with conn.cursor() as cur:
@@ -1897,7 +1902,6 @@ def webhook():
                                 WHERE owner_id = %s
                             """, (msg_id, inviter_id))
                         conn.commit()
-                
                 # =========================
                 # ✅ ШАГ 3 — ВТОРОЙ РЕФЕРАЛ (2 / 2)
                 # =========================
