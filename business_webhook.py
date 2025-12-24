@@ -1975,7 +1975,7 @@ def webhook():
                 start_date, end_date = get_trial_dates(owner_id)
                 ref_link = get_ref_link(owner_id)
             
-                with get_db() as conn:
+                
                 if payload:
                     tg("deleteMessage", {
                         "chat_id": chat_id,
