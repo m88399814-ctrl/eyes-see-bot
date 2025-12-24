@@ -1794,22 +1794,22 @@ def webhook():
             parts = text.split(maxsplit=1)
             cmd = parts[0]
             payload = parts[1].strip() if len(parts) > 1 else ""
-        # 🔥 BITE TOKEN (/start bite_xxx)
-        if payload and payload.startswith("bite_"):
-            tg("deleteMessage", {
-                "chat_id": chat_id,
-                "message_id": msg["message_id"]
-            })
-        
-            start_date, end_date = get_trial_dates(owner_id)
-            ref_link = get_ref_link(owner_id)
-        
-            send_text(
-                chat_id,
-                trial_expired_text(start_date, end_date, ref_link),
-                trial_expired_markup(ref_link)
-            )
-            return "ok"
+            # 🔥 BITE TOKEN (/start bite_xxx)
+            if payload and payload.startswith("bite_"):
+                tg("deleteMessage", {
+                    "chat_id": chat_id,
+                    "message_id": msg["message_id"]
+                })
+            
+                start_date, end_date = get_trial_dates(owner_id)
+                ref_link = get_ref_link(owner_id)
+            
+                send_text(
+                    chat_id,
+                    trial_expired_text(start_date, end_date, ref_link),
+                    trial_expired_markup(ref_link)
+                )
+                return "ok"
             if payload.startswith("ref_"):
                 inviter_id = int(payload.replace("ref_", ""))
                 with get_db() as conn:
