@@ -1752,7 +1752,7 @@ def webhook():
                         cur.execute(
                             "UPDATE owners SET referral_used = TRUE WHERE owner_id = %s",
                             (inviter_id,)
-
+                        )
                     conn.commit()
             
                 # 👉 проверяем, сколько уже приглашено
