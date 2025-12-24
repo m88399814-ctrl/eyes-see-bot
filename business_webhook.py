@@ -121,6 +121,13 @@ def init_db():
                     ALTER TABLE owners
                     ADD COLUMN referral_used BOOLEAN DEFAULT FALSE;
                 END IF;
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='owners' AND column_name='last_bite_at'
+                ) THEN
+                    ALTER TABLE owners ADD COLUMN last_bite_at TIMESTAMP;
+                END IF;
             END $$;
             """) 
             
@@ -641,6 +648,43 @@ def check_usdt_payment(owner_id: int):
             return tx_hash
 
     return None
+
+# ================= BITE MESSAGE =================
+def can_send_bite(owner_id: int) -> bool:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT last_bite_at
+                FROM owners
+                WHERE owner_id = %s
+                LIMIT 1
+            """, (owner_id,))
+            r = cur.fetchone()
+
+    if not r or not r[0]:
+        return True
+
+    return (time.time() - r[0].timestamp()) >= 5 * 60 * 60
+    
+def mark_bite_sent(owner_id: int):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE owners
+                SET last_bite_at = NOW()
+                WHERE owner_id = %s
+            """, (owner_id,))
+        conn.commit()
+
+def bite_text(deleted_text: str, sender_name: str, token: str):
+    return (
+        "🗑 <b>Новое удалённое сообщение:</b>\n\n"
+        f"<blockquote>{html.escape(deleted_text)}</blockquote>\n\n"
+        f"<b>Удалил(а):</b> {html.escape(sender_name)}\n\n"
+        "❗️ Твой пробный период EyesSee закончился\n"
+        "Но его можно продлить <b>бесплатно!</b>"
+        f"<a href=\"https://t.me/{BOT_USERNAME}?start={token}\">Подробнее</a>"
+    )
 # ================= SETTINGS: DELETED MESSAGES =================
 
 def is_deleted_enabled(owner_id: int) -> bool:
@@ -1564,7 +1608,21 @@ def webhook():
         
         if r and r[0] == owner_id:
             return "ok"
-
+        # 🔥 БАЙТ-СООБЩЕНИЕ
+        if not has_access(owner_id) and can_send_bite(owner_id):
+            token = uuid.uuid4().hex[:10]
+        
+            send_text(
+                owner_id,
+                bite_text(
+                    deleted_text=text or "Сообщение",
+                    sender_name=sender_name or "Пользователь",
+                    token=token
+                )
+            )
+        
+            mark_bite_sent(owner_id)
+            return "ok"
         time.sleep(1)
 
         blocks = []
@@ -1736,7 +1794,22 @@ def webhook():
             parts = text.split(maxsplit=1)
             cmd = parts[0]
             payload = parts[1].strip() if len(parts) > 1 else ""
-
+        # 🔥 BITE TOKEN (/start bite_xxx)
+        if payload and payload.startswith("bite_"):
+            tg("deleteMessage", {
+                "chat_id": chat_id,
+                "message_id": msg["message_id"]
+            })
+        
+            start_date, end_date = get_trial_dates(owner_id)
+            ref_link = get_ref_link(owner_id)
+        
+            send_text(
+                chat_id,
+                trial_expired_text(start_date, end_date, ref_link),
+                trial_expired_markup(ref_link)
+            )
+            return "ok"
             if payload.startswith("ref_"):
                 inviter_id = int(payload.replace("ref_", ""))
                 with get_db() as conn:
