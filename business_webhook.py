@@ -493,7 +493,16 @@ def get_trial_dates(owner_id: int):
         start_dt.strftime("%Y-%m-%d"),
         end_dt.strftime("%Y-%m-%d")
     )
-
+    
+def owner_exists(owner_id: int) -> bool:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM owners WHERE owner_id = %s LIMIT 1",
+                (owner_id,)
+            )
+            return cur.fetchone() is not None
+            
 def get_ref_link(owner_id: int):
     return f"https://t.me/{BOT_USERNAME}?start=ref_{owner_id}"
 
@@ -1956,7 +1965,17 @@ def webhook():
 
             
             # 🔐 PAYWALL — ТОЛЬКО ЗДЕСЬ
-            if not has_access(owner_id):
+            if owner_exists(owner_id) and not has_access(owner_id):
+                if payload:
+                    tg("deleteMessage", {
+                        "chat_id": chat_id,
+                        "message_id": msg["message_id"]
+                    })
+            
+                start_date, end_date = get_trial_dates(owner_id)
+                ref_link = get_ref_link(owner_id)
+            
+                with get_db() as conn:
                 if payload:
                     tg("deleteMessage", {
                         "chat_id": chat_id,
