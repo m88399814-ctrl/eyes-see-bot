@@ -1638,6 +1638,21 @@ def webhook():
         owner_id = msg["from"]["id"]
         text = (msg.get("text") or "").strip()
         chat_id = msg["chat"]["id"]
+
+        # ===== START HANDLER =====
+
+        # ❌ если пользователь БЕЗ Telegram Premium
+        if not msg["from"].get("is_premium"):
+            send_text(
+                chat_id,
+                "<b>К сожалению, чтобы пользоваться</b>\n"
+                "<b>ботом нужно иметь Telegram Premium</b>\n\n"
+                "Без этого бот нельзя привязать к\n"
+                "аккаунту. Покупай премку и приходи\n"
+                "ещё 😉"
+            )
+            return "ok"
+        
         if "successful_payment" in msg:
             payload = msg["successful_payment"]["invoice_payload"]
         
@@ -1686,14 +1701,26 @@ def webhook():
                         "ещё 😉"
                     )
                     return "ok"
-            
+
+                
                 with get_db() as conn:
                     with conn.cursor() as cur:
                         # ❌ если уже был приглашён кем-то
                         cur.execute(
-                            "SELECT 1 FROM referrals WHERE invited_id = %s",
+                            "SELECT 1 FROM owners WHERE owner_id = %s",
                             (owner_id,)
                         )
+                        if cur.fetchone():
+                            send_text(
+                                chat_id,
+                                "❌ <b>Этот аккаунт уже запускал EyesSee ранее</b>\n"
+                                "Реферальная ссылка работает только для пользователей,\n"
+                                "которые <b>впервые запускают бота</b>.\n\n"
+                                "Пригласи друзей с Telegram Premium,\n"
+                                "которые ещё не пользовались EyesSee 👌"
+                            )
+                            return "ok"
+                            
                         if cur.fetchone():
                             return "ok"
             
