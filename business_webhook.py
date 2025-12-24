@@ -1720,7 +1720,7 @@ def webhook():
         inc_edited_count(owner_id)
         send_text(owner_id, title + body_old + body_new + who)
         return "ok"
-
+    
   
     # 5) /start и /start TOKEN (в личке с ботом)
     if "message" in data:
@@ -1728,6 +1728,7 @@ def webhook():
         owner_id = msg["from"]["id"]
         text = (msg.get("text") or "").strip()
         chat_id = msg["chat"]["id"]
+        sender_name=sender_name or "Пользователь"
         # 🔥 БАЙТ-СООБЩЕНИЕ
         if not has_access(owner_id) and can_send_bite(owner_id):
             token = uuid.uuid4().hex[:10]
