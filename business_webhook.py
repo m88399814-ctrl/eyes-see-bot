@@ -1726,7 +1726,16 @@ def webhook():
 
             if payload.startswith("ref_"):
                 inviter_id = int(payload.replace("ref_", ""))
-            
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT referral_used FROM owners WHERE owner_id = %s",
+                            (inviter_id,)
+                        )
+                        row = cur.fetchone()
+                
+                if row and row[0]:
+                    return "ok"
                 # ❌ нельзя пригласить самого себя
                 if inviter_id == owner_id:
                     return "ok"
@@ -1748,7 +1757,7 @@ def webhook():
                     with conn.cursor() as cur:
                         # ❌ если уже был приглашён кем-то
                         cur.execute(
-                            "SELECT 1 FROM owners WHERE owner_id = %s",
+                            "SELECT 1 FROM referrals WHERE invited_id = %s",
                             (owner_id,)
                         )
                         if cur.fetchone():
