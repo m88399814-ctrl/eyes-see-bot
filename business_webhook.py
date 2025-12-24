@@ -1897,9 +1897,6 @@ def webhook():
                     })
                 
                     data = res.json()
-                    if not data.get("ok"):
-                        return "ok"
-                
                     msg_id = data["result"]["message_id"]
                 
                     with get_db() as conn:
@@ -1914,15 +1911,16 @@ def webhook():
                 # ✅ ШАГ 3 — ВТОРОЙ РЕФЕРАЛ (2 / 2)
                 # =========================
                 if count >= 2:
-                    # удалить сообщение 1 / 2
                     with get_db() as conn:
                         with conn.cursor() as cur:
-                            cur.execute(
-                                "SELECT ref_progress_msg_id FROM owners WHERE owner_id = %s",
-                                (inviter_id,)
-                            )
+                            cur.execute("""
+                                SELECT ref_progress_msg_id
+                                FROM owners
+                                WHERE owner_id = %s
+                            """, (inviter_id,))
                             row = cur.fetchone()
-                            msg_id = row[0] if row else None
+                
+                    msg_id = row[0] if row else None
                 
                     if msg_id:
                         tg("deleteMessage", {
@@ -1930,12 +1928,12 @@ def webhook():
                             "message_id": msg_id
                         })
                 
-                    # отметить, что рефералка использована
                     with get_db() as conn:
                         with conn.cursor() as cur:
                             cur.execute("""
                                 UPDATE owners
-                                SET ref_progress_msg_id = NULL,
+                                SET
+                                    ref_progress_msg_id = NULL,
                                     referral_used = TRUE,
                                     trial_until = NOW() + INTERVAL '14 days'
                                 WHERE owner_id = %s
