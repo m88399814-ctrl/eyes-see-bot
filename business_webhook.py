@@ -1346,7 +1346,7 @@ def webhook():
 
         # ВОТ ЭТО ПРАВИЛЬНОЕ ПОЛЕ:
         is_enabled = bc.get("is_enabled", True)
-    
+        is_new_connection = False
         with get_db() as conn:
             with conn.cursor() as cur:
                 # если отключили — выключаем ВСЁ для этого owner
@@ -1356,7 +1356,12 @@ def webhook():
                         SET is_active = FALSE
                         WHERE owner_id = %s
                     """, (owner_id,))
-        
+                cur.execute(
+                    "SELECT 1 FROM owners WHERE business_connection_id = %s",
+                    (bc_id,)
+                )
+                if not cur.fetchone():
+                    is_new_connection = True
                 # текущее подключение пишем как есть
                 cur.execute("""
                     WITH existing AS (
@@ -1393,7 +1398,7 @@ def webhook():
         
             conn.commit()
     
-        if is_enabled:
+        if is_enabled and is_new_connection:
             send_text(
                 owner_id,
                 "Бот подключён 👁️",
