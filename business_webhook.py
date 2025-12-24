@@ -50,6 +50,15 @@ def init_db():
                 ) THEN
                     ALTER TABLE owners ADD COLUMN is_active BOOLEAN DEFAULT TRUE;
                 END IF;
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='owners'
+                      AND column_name='ref_progress_msg_id'
+                ) THEN
+                    ALTER TABLE owners
+                    ADD COLUMN ref_progress_msg_id BIGINT;
+                END IF;
             END $$;
             """)
             cur.execute("""
@@ -1769,7 +1778,7 @@ def webhook():
                         )
                     conn.commit()
             
-                # 👉 проверяем, сколько уже приглашено
+                # 👉 считаем, сколько приглашено
                 with get_db() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
@@ -1777,26 +1786,66 @@ def webhook():
                             (inviter_id,)
                         )
                         count = cur.fetchone()[0]
-            
-                # 🎁 если стало 2 — продлеваем
-                if count >= 2:
+                
+                # =========================
+                # ✅ ШАГ 2 — ПЕРВЫЙ РЕФЕРАЛ (1 / 2)
+                # =========================
+                if count == 1:
+                    res = tg("sendMessage", {
+                        "chat_id": inviter_id,
+                        "text": "📊 <b>Рефералы:</b> 1 / 2",
+                        "parse_mode": "HTML"
+                    })
+                    msg_id = res["result"]["message_id"]
+                
                     with get_db() as conn:
                         with conn.cursor() as cur:
                             cur.execute("""
                                 UPDATE owners
-                                SET trial_until = NOW() + INTERVAL '14 days'
+                                SET ref_progress_msg_id = %s
+                                WHERE owner_id = %s
+                            """, (msg_id, inviter_id))
+                        conn.commit()
+                
+                # =========================
+                # ✅ ШАГ 3 — ВТОРОЙ РЕФЕРАЛ (2 / 2)
+                # =========================
+                if count >= 2:
+                    # удалить сообщение 1 / 2
+                    with get_db() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                "SELECT ref_progress_msg_id FROM owners WHERE owner_id = %s",
+                                (inviter_id,)
+                            )
+                            row = cur.fetchone()
+                            msg_id = row[0] if row else None
+                
+                    if msg_id:
+                        tg("deleteMessage", {
+                            "chat_id": inviter_id,
+                            "message_id": msg_id
+                        })
+                
+                    # отметить, что рефералка использована
+                    with get_db() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute("""
+                                UPDATE owners
+                                SET ref_progress_msg_id = NULL,
+                                    referral_used = TRUE,
+                                    trial_until = NOW() + INTERVAL '14 days'
                                 WHERE owner_id = %s
                             """, (inviter_id,))
                         conn.commit()
-            
+                
                     send_text(
                         inviter_id,
                         "🎉 <b>Поздравляю!</b>\n\n"
                         "Два друга подключили EyesSee — тебе продлён доступ ещё на <b>14 дней</b> 🔥"
                     )
+                
                     show_bot_ready(inviter_id, inviter_id)
-            
-                return "ok"
         
             if "@" in cmd and cmd != f"/start@{BOT_USERNAME}":
                 return "ok"
