@@ -1174,7 +1174,21 @@ def trial_expired_markup(ref_link: str):
             ]
         ]
     }
-
+    
+def trial_expired_markup_without_ref():
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "⭐ Оплатить 1 месяц — 80", "callback_data": "pay_1m"}
+            ],
+            [
+                {"text": "💎 Оплатить криптовалютой", "callback_data": "pay_crypto"}
+            ],
+            [
+                {"text": "💳 Оплатить картой", "callback_data": "pay_card"}
+            ]
+        ]
+    }
 def pay_card_unavailable_text():
     return (
         "<b>💳 Оплата картой</b>\n\n"
