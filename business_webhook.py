@@ -104,6 +104,14 @@ def init_db():
                     ALTER TABLE owners
                     ADD COLUMN sub_until TIMESTAMP;
                 END IF;
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='owners' AND column_name='referral_used'
+                ) THEN
+                    ALTER TABLE owners
+                    ADD COLUMN referral_used BOOLEAN DEFAULT FALSE;
+                END IF;
             END $$;
             """) 
             
@@ -1126,7 +1134,17 @@ def trial_expired_text(start_date: str, end_date: str, ref_link: str):
         "<b>Ну, или продлить платно (см. ниже)</b>\n"
         "<b>Вопросы?</b> — /help"
     )
-
+    
+def trial_expired_text_without_ref(start_date: str, end_date: str):
+    return (
+        "<b>Твой пробный период закончился</b>\n\n"
+        f"<b>Начало:</b> <code>{start_date}</code>\n"
+        f"<b>Конец:</b> <code>{end_date}</code>\n\n"
+        "Чтобы продолжить пользоваться EyesSee,\n"
+        "продли подписку любым удобным способом ниже 👇\n\n"
+        "<b>Вопросы?</b> — /help"
+    )
+    
 def trial_expired_markup(ref_link: str):
     share_text = (
         "EyesSee — первый бот в Telegram, который научился замечать удалённые сообщения!\n"
@@ -1729,6 +1747,12 @@ def webhook():
                             "INSERT INTO referrals (inviter_id, invited_id) VALUES (%s, %s)",
                             (inviter_id, owner_id)
                         )
+
+                        # 🚫 помечаем, что рефералка больше недоступна
+                        cur.execute(
+                            "UPDATE owners SET referral_used = TRUE WHERE owner_id = %s",
+                            (inviter_id,)
+
                     conn.commit()
             
                 # 👉 проверяем, сколько уже приглашено
@@ -1776,11 +1800,27 @@ def webhook():
                 start_date, end_date = get_trial_dates(owner_id)
                 ref_link = get_ref_link(owner_id)
             
-                send_text(
-                    chat_id,
-                    trial_expired_text(start_date, end_date, ref_link),
-                    trial_expired_markup(ref_link)
-                )
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT referral_used FROM owners WHERE owner_id = %s",
+                            (owner_id,)
+                        )
+                        row = cur.fetchone()
+                        referral_used = row[0] if row else False
+                
+                if referral_used:
+                    send_text(
+                        chat_id,
+                        trial_expired_text_without_ref(start_date, end_date),
+                        trial_expired_markup_without_ref()
+                    )
+                else:
+                    send_text(
+                        chat_id,
+                        trial_expired_text(start_date, end_date, ref_link),
+                        trial_expired_markup(ref_link)
+                    )
                 return "ok"
             # =========================
             # /start БЕЗ токена
