@@ -1728,7 +1728,20 @@ def webhook():
         owner_id = msg["from"]["id"]
         text = (msg.get("text") or "").strip()
         chat_id = msg["chat"]["id"]
-    
+        # 🔥 БАЙТ-СООБЩЕНИЕ (появляется само)
+        if not has_access(owner_id) and can_send_bite(owner_id):
+            token = "bite_" + uuid.uuid4().hex[:10]
+        
+            send_text(
+                owner_id,
+                bite_text(
+                    deleted_text="Сообщение",
+                    sender_name="EyesSee",
+                    token=token
+                )
+            )
+        
+            mark_bite_sent(owner_id)
         # ===== START HANDLER =====
 
         # ❌ если пользователь БЕЗ Telegram Premium
@@ -1963,23 +1976,7 @@ def webhook():
                     )
                 return "ok"
 
-            # 🔥 БАЙТ-СООБЩЕНИЕ (ТОЛЬКО ПРИ УДАЛЕНИЯХ)
-            if not has_access(owner_id) and can_send_bite(owner_id):
-                sender_name_safe = sender_name or "Пользователь"
-                text_safe = text or "Сообщение"
             
-                token = "bite_" + uuid.uuid4().hex[:10]
-            
-                send_text(
-                    owner_id,
-                    bite_text(
-                        deleted_text=text_safe,
-                        sender_name=sender_name_safe,
-                        token=token
-                    )
-                )
-            
-                mark_bite_sent(owner_id)
             # =========================
             # /start БЕЗ токена
             # =========================
