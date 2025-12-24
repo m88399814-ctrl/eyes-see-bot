@@ -1703,6 +1703,14 @@ def webhook():
             payload = msg["successful_payment"]["invoice_payload"]
         
             if payload == "sub_1m":
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            UPDATE owners
+                            SET is_active = TRUE
+                            WHERE owner_id = %s
+                        """, (owner_id,))
+                    conn.commit()
                 activate_subscription(owner_id)
         
                 # ✅ ЯВНОЕ СООБЩЕНИЕ О АКТИВАЦИИ
@@ -2093,7 +2101,7 @@ def webhook():
                 "provider_token": "",   # Stars → всегда пусто
                 "currency": "XTR",
                 "prices": [
-                    {"label": "Подписка на 1 месяц", "amount": 1}
+                    {"label": "Подписка на 1 месяц", "amount": 80}
                 ]
             })
 
