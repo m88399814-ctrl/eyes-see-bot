@@ -688,8 +688,8 @@ def mark_bite_sent(owner_id: int):
 def bite_text(deleted_text: str, sender_name: str, token: str):
     return (
         "🗑 <b>Новое удалённое сообщение:</b>\n\n"
-        f"<blockquote>{html.escape(deleted_text)}</blockquote>\n\n"
-        f"<b>Удалил(а):</b> {html.escape(sender_name)}\n\n"
+        f"<blockquote>???</blockquote>\n\n"
+        f"<b>Удалил(а): ???</b>\n\n"
         "❗️ Твой пробный период EyesSee закончился\n"
         "Но его можно продлить <b>бесплатно!</b>"
         f"<a href=\"https://t.me/{BOT_USERNAME}?start={token}\">Подробнее</a>"
