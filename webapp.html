@@ -56,23 +56,62 @@
 <div id="chat">Загрузка…</div>
 
 <script>
-const tg = window.Telegram.WebApp;
+const chatEl = document.getElementById("chat");
+
+// 1️⃣ Проверяем Telegram WebApp
+const tg = window.Telegram?.WebApp;
+if (!tg) {
+  chatEl.innerHTML = "❌ Откройте через Telegram";
+  console.warn("Telegram WebApp not found");
+  return;
+}
+
 tg.expand();
 
+// 2️⃣ Разбираем параметры
 const params = new URLSearchParams(window.location.search);
+const mode = params.get("mode");
 const chatId = params.get("chat_id");
-const userId = tg.initDataUnsafe.user.id;
 
+// 3️⃣ Безопасно берём userId
+const userId = tg.initDataUnsafe?.user?.id;
+if (!userId) {
+  chatEl.innerHTML = "❌ Нет данных пользователя";
+  console.warn("No user data");
+  return;
+}
+
+// 4️⃣ MODE: COPY
+if (mode === "copy") {
+  chatEl.innerHTML = `
+    <div style="text-align:center;padding:40px;font-size:28px">
+      📋 Нажмите кнопку в боте, чтобы скопировать данные
+    </div>
+  `;
+  return;
+}
+
+// 5️⃣ MODE: RESTORE
+if (mode !== "restore") {
+  chatEl.innerHTML = "⚠️ Неизвестный режим";
+  return;
+}
+
+if (!chatId) {
+  chatEl.innerHTML = "❌ Нет chat_id";
+  return;
+}
+
+// 6️⃣ Загружаем чат
 fetch(`/api/chat?owner_id=${userId}&chat_id=${chatId}`)
   .then(r => r.json())
   .then(d => {
     if (!d.ok) {
-      document.getElementById("chat").innerHTML = "❌ Ошибка загрузки";
+      chatEl.innerHTML = "❌ Ошибка загрузки чата";
       return;
     }
 
-    const el = document.getElementById("chat");
-    el.innerHTML = "";
+    chatEl.innerHTML = "";
 
     d.messages.forEach(m => {
       const isMine = m.is_owner === true;
@@ -84,26 +123,22 @@ fetch(`/api/chat?owner_id=${userId}&chat_id=${chatId}`)
 
       if (m.type === "text") {
         html += `<div>${m.text || ""}</div>`;
+      } else if (m.file_id) {
+        html += `
+          <a class="media" href="/api/file?file_id=${m.file_id}" target="_blank">
+            📎 ${m.type}
+          </a>
+        `;
       } else {
-        if (!m.file_id) {
-          html += `<div class="media">❌ файл недоступен</div>`;
-        } else {
-          html += `
-            <a class="media"
-               href="/api/file?file_id=${m.file_id}"
-               target="_blank">
-               📎 ${m.type}
-            </a>
-          `;
-        }
+        html += `<div class="media">❌ файл недоступен</div>`;
       }
 
       html += `<div class="time">${new Date(m.time).toLocaleString()}</div></div>`;
-      el.insertAdjacentHTML("beforeend", html);
+      chatEl.insertAdjacentHTML("beforeend", html);
     });
   })
   .catch(err => {
-    document.getElementById("chat").innerHTML = "❌ JS ошибка";
+    chatEl.innerHTML = "❌ JS ошибка";
     console.error(err);
   });
 </script>
