@@ -1,3 +1,6 @@
+<script>
+alert(JSON.stringify(window.Telegram?.WebApp?.initDataUnsafe));
+</script>
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -74,7 +77,7 @@ const mode = params.get("mode");
 const chatId = params.get("chat_id");
 
 // 3️⃣ Безопасно берём userId
-const userId = tg.initDataUnsafe?.user?.id;
+const userId = null; // owner берём с сервера
 if (!userId) {
   chatEl.innerHTML = "❌ Нет данных пользователя";
   console.warn("No user data");
