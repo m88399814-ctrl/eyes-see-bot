@@ -9,56 +9,60 @@
     body {
       margin: 0;
       color: #fff;
-    
       background-image: url("/static/bg.jpg");
-      background-repeat: repeat-y;   /* ⬅ повтор по вертикали */
-      background-size: auto;         /* ⬅ НЕ растягиваем */
+      background-repeat: repeat-y;
+      background-size: auto;
       background-position: top center;
     }
     #chat { padding:12px }
     .msg {
-      margin:10px; /*УМЕНЬШИТЬ ОТСТУП МЕЖДУ СООБЩЕНИЯМ */
-      padding:12px;/*УМЕНЬШИТЬ РАЗМЕР КВАДРАТА ПО ВЫСОТЕ, ЕСЛИ ПИШЕМ ДВА ЗНАЧЕНИЯ ЗНАЧИТ ПЕРВАЯ СВЕРХУ СНИХУ, А ВТОРАЯ СЛЕВА СПРАВА*/
+      margin:10px;
+      padding:12px;
       border-radius:14px;
-      max-width:70%; /*УМЕНЬШИТЬ ПО ШИРИНЕ */
-      font-size:28px;   /* ← ТЕКСТ СООБЩЕНИЙ */
+      max-width:70%;
+      font-size:28px;
       line-height:1.4;
     }
     .me { background:#2b5278; margin-left:auto; text-align:right }
     .other { background:#1e1e1e }
     .name {
-      font-size:30px;   /* ← ИМЯ */
+      font-size:30px;
       font-weight:600;
       opacity:.85;
       margin-bottom:6px;
     }
     .time {
-      font-size:16px;   /* ← ВРЕМЯ */
+      font-size:16px;
       opacity:.5;
       margin-top:6px;
     }
     .media {
       color:#5cc8ff;
       font-weight:bold;
-      font-size:28px;   /* ← МЕДИА */
+      font-size:28px;
     }
   </style>
 </head>
 
 <body>
-<h2 style="
-  text-align:center;
-  font-size:35px;
-  padding:20px 0;
-">
+
+<h2 style="text-align:center;font-size:35px;padding:20px 0;">
   📂 Восстановленный чат
 </h2>
+
 <div id="chat">Загрузка…</div>
 
 <script>
+const chatEl = document.getElementById("chat"); // 🔥 ОБЯЗАТЕЛЬНО
+
 async function loadChat(retry = 0) {
   const params = new URLSearchParams(window.location.search);
   const chatId = params.get("chat_id");
+
+  if (!chatId) {
+    chatEl.innerHTML = "❌ Нет chat_id";
+    return;
+  }
 
   try {
     const r = await fetch(`/api/chat?chat_id=${chatId}`);
@@ -77,6 +81,7 @@ async function loadChat(retry = 0) {
 
     d.messages.forEach(m => {
       const isMine = m.is_owner === true;
+
       let html = `
         <div class="msg ${isMine ? "me" : "other"}">
           <div class="name">${m.name || ""}</div>
@@ -103,5 +108,6 @@ async function loadChat(retry = 0) {
 
 loadChat();
 </script>
+
 </body>
 </html>
