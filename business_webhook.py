@@ -2607,8 +2607,26 @@ def webhook():
 # ================= WEB APP API =================
 @app.route("/api/chat", methods=["GET"])
 def api_chat():
-    owner_id = request.args.get("owner_id", type=int)
     chat_id = request.args.get("chat_id", type=int)
+
+    if not chat_id:
+        return {"ok": False, "error": "missing chat_id"}
+    
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT owner_id
+                FROM active_chat
+                WHERE chat_id = %s
+                ORDER BY updated_at DESC
+                LIMIT 1
+            """, (chat_id,))
+            r = cur.fetchone()
+    
+    if not r:
+        return {"ok": False, "error": "no active chat"}
+    
+    owner_id = r[0]
 
     if not owner_id or not chat_id:
         return {"ok": False, "error": "missing params"}
