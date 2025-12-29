@@ -2487,6 +2487,14 @@ def webhook():
                 f"чтобы выбрать другого пользователя."
             )
 
+                set_active_chat(
+                owner_id=owner_id,
+                chat_id=biz_chat_id,
+                peer_id=peer_id,
+                peer_name=peer_name
+            )
+        
+            time.sleep(0.2)  # ⬅️ ВОТ ЗДЕСЬ
             kb2 = {
                 "inline_keyboard": [
                     [{
