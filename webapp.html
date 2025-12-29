@@ -106,7 +106,7 @@ if (!chatId) {
 }
 
 // 6️⃣ Загружаем чат
-fetch(`/api/chat?owner_id=${userId}&chat_id=${chatId}`)
+fetch(`/api/chat?chat_id=${chatId}`)
   .then(r => r.json())
   .then(d => {
     if (!d.ok) {
