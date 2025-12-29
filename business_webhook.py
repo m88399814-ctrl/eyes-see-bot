@@ -2491,7 +2491,7 @@ def webhook():
                 "inline_keyboard": [
                     [{
                         "text": "♻️ Восстановить чат",
-                        "web_app": { "url": f"https://eyes-see-bot.onrender.com/webapp?chat_id={biz_chat_id}" }
+                        "web_app": { "url": f"https://eyes-see-bot.onrender.com/webapp?mode=restorechat_id={biz_chat_id}" }
                     }],
                     [{"text": "⬅️ Назад", "callback_data": "back_to_chats"}]
                 ]
