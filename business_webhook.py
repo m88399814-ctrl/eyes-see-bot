@@ -2491,7 +2491,7 @@ def webhook():
                 "inline_keyboard": [
                     [{
                         "text": "♻️ Восстановить чат",
-                        "web_app": { "url": f"https://eyes-see-bot.onrender.com/webapp?mode=restore&chat_id={biz_chat_id}" }
+                        "web_app": { "url": f"https://eyes-see-bot.onrender.com/webapp?mode=restore&chat_id={biz_chat_id}&v=2" }
                     }],
                     [{"text": "⬅️ Назад", "callback_data": "back_to_chats"}]
                 ]
@@ -2611,7 +2611,8 @@ def api_chat():
 
     if not chat_id:
         return {"ok": False, "error": "missing chat_id"}
-    
+
+    # берём owner_id из active_chat
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -2622,14 +2623,11 @@ def api_chat():
                 LIMIT 1
             """, (chat_id,))
             r = cur.fetchone()
-    
+
     if not r:
         return {"ok": False, "error": "no active chat"}
-    
-    owner_id = r[0]
 
-    if not owner_id or not chat_id:
-        return {"ok": False, "error": "missing params"}
+    owner_id = r[0]
 
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -2665,7 +2663,6 @@ def api_chat():
         "ok": True,
         "messages": messages
     }
-
 # ================= WEB APP =================
 
 @app.route("/webapp")
