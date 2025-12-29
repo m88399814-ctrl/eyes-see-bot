@@ -56,58 +56,20 @@
 <div id="chat">Загрузка…</div>
 
 <script>
-const chatEl = document.getElementById("chat");
+async function loadChat(retry = 0) {
+  const params = new URLSearchParams(window.location.search);
+  const chatId = params.get("chat_id");
 
-// 1️⃣ Проверяем Telegram WebApp
-const tg = window.Telegram?.WebApp;
-if (!tg) {
-  chatEl.innerHTML = "❌ Откройте через Telegram";
-  console.warn("Telegram WebApp not found");
-  return;
-}
+  try {
+    const r = await fetch(`/api/chat?chat_id=${chatId}`);
+    const d = await r.json();
 
-tg.expand();
-
-// 2️⃣ Разбираем параметры
-const params = new URLSearchParams(window.location.search);
-const mode = params.get("mode");
-const chatId = params.get("chat_id");
-
-// 3️⃣ Безопасно берём userId
-const userId = null; // owner берём с сервера
-if (!userId) {
-  chatEl.innerHTML = "❌ Нет данных пользователя";
-  console.warn("No user data");
-  return;
-}
-
-// 4️⃣ MODE: COPY
-if (mode === "copy") {
-  chatEl.innerHTML = `
-    <div style="text-align:center;padding:40px;font-size:28px">
-      📋 Нажмите кнопку в боте, чтобы скопировать данные
-    </div>
-  `;
-  return;
-}
-
-// 5️⃣ MODE: RESTORE
-if (mode !== "restore") {
-  chatEl.innerHTML = "⚠️ Неизвестный режим";
-  return;
-}
-
-if (!chatId) {
-  chatEl.innerHTML = "❌ Нет chat_id";
-  return;
-}
-
-// 6️⃣ Загружаем чат
-fetch(`/api/chat?chat_id=${chatId}`)
-  .then(r => r.json())
-  .then(d => {
     if (!d.ok) {
-      chatEl.innerHTML = "❌ Ошибка загрузки чата";
+      if (retry < 5) {
+        setTimeout(() => loadChat(retry + 1), 300);
+        return;
+      }
+      chatEl.innerHTML = "❌ Чат не найден";
       return;
     }
 
@@ -115,7 +77,6 @@ fetch(`/api/chat?chat_id=${chatId}`)
 
     d.messages.forEach(m => {
       const isMine = m.is_owner === true;
-
       let html = `
         <div class="msg ${isMine ? "me" : "other"}">
           <div class="name">${m.name || ""}</div>
@@ -129,18 +90,18 @@ fetch(`/api/chat?chat_id=${chatId}`)
             📎 ${m.type}
           </a>
         `;
-      } else {
-        html += `<div class="media">❌ файл недоступен</div>`;
       }
 
       html += `<div class="time">${new Date(m.time).toLocaleString()}</div></div>`;
       chatEl.insertAdjacentHTML("beforeend", html);
     });
-  })
-  .catch(err => {
-    chatEl.innerHTML = "❌ JS ошибка";
-    console.error(err);
-  });
+
+  } catch (e) {
+    chatEl.innerHTML = "❌ Ошибка сети";
+  }
+}
+
+loadChat();
 </script>
 </body>
 </html>
