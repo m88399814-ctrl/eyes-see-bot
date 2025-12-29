@@ -184,142 +184,17 @@ def init_db():
             )
             """)
 
-            # ================= DB =================
-
-def get_db():
-    return psycopg2.connect(DATABASE_URL)
-
-def init_db():
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            # Таблица владельцев (для нескольких бизнес-подключений)
+            # ================================
+            # 👥 РЕФЕРАЛЫ
+            # ================================
             cur.execute("""
-            CREATE TABLE IF NOT EXISTS owners (
-                business_connection_id TEXT PRIMARY KEY,
-                owner_id BIGINT NOT NULL,
-                is_active BOOLEAN DEFAULT TRUE
-            )
-            """)
-            cur.execute("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name='owners' AND column_name='is_active'
-                ) THEN
-                    ALTER TABLE owners ADD COLUMN is_active BOOLEAN DEFAULT TRUE;
-                END IF;
-            END $$;
-            """)
-            cur.execute("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name='owners' AND column_name='deleted_enabled'
-                ) THEN
-                    ALTER TABLE owners ADD COLUMN deleted_enabled BOOLEAN DEFAULT TRUE;
-                END IF;
-
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name='owners' AND column_name='deleted_count'
-                ) THEN
-                    ALTER TABLE owners ADD COLUMN deleted_count INTEGER DEFAULT 0;
-                END IF;
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name='owners' AND column_name='edited_enabled'
-                ) THEN
-                    ALTER TABLE owners ADD COLUMN edited_enabled BOOLEAN DEFAULT TRUE;
-                END IF;
-            
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name='owners' AND column_name='edited_count'
-                ) THEN
-                    ALTER TABLE owners ADD COLUMN edited_count INTEGER DEFAULT 0;
-                END IF;
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name='owners' AND column_name='disappear_count'
-                ) THEN
-                    ALTER TABLE owners ADD COLUMN disappear_count INTEGER DEFAULT 0;
-                END IF;
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name='owners' AND column_name='trial_until'
-                ) THEN
-                    ALTER TABLE owners
-                    ADD COLUMN trial_until TIMESTAMP;
-                END IF;
-                
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name='owners' AND column_name='sub_until'
-                ) THEN
-                    ALTER TABLE owners
-                    ADD COLUMN sub_until TIMESTAMP;
-                END IF;
-            END $$;
-            """) 
-            
-            # Таблица сообщений
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS messages (
-                id SERIAL PRIMARY KEY,
-                owner_id BIGINT NOT NULL,
-                chat_id BIGINT,
-                sender_id BIGINT NOT NULL,
-                sender_name TEXT,
-                message_id BIGINT NOT NULL,
-                msg_type TEXT NOT NULL,
-                text TEXT,
-                file_id TEXT,
-                token TEXT UNIQUE,
+            CREATE TABLE IF NOT EXISTS referrals (
+                inviter_id BIGINT NOT NULL,
+                invited_id BIGINT NOT NULL UNIQUE,
                 created_at TIMESTAMP DEFAULT NOW()
             )
             """)
-
-            # если у тебя старая таблица без chat_id — добавим (не ломает)
-            cur.execute("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name='messages' AND column_name='chat_id'
-                ) THEN
-                    ALTER TABLE messages ADD COLUMN chat_id BIGINT;
-                END IF;
-            END $$;
-            """)
-
-            # Таблица выбранного чата (чтобы /start показывал нужного юзера)
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS active_chat (
-                owner_id BIGINT PRIMARY KEY,
-                chat_id BIGINT NOT NULL,
-                peer_id BIGINT NOT NULL,
-                peer_name TEXT NOT NULL,
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-            """)
-
-            # ================================
-            # 🔐 ИСПОЛЬЗОВАННЫЕ ПЛАТЕЖИ (TON)
-            # ================================
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS used_payments (
-                tx_hash TEXT PRIMARY KEY,
-                owner_id BIGINT NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-            """)
-
+            
         conn.commit()
 
 def is_payment_used(tx_hash: str) -> bool:
