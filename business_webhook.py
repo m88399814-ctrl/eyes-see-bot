@@ -335,6 +335,7 @@ def has_access(owner_id: int) -> bool:
             cur.execute("""
             SELECT
                 CASE
+                    WHEN is_active = FALSE THEN FALSE
                     WHEN sub_until IS NOT NULL AND sub_until > NOW() THEN TRUE
                     WHEN sub_until IS NULL AND trial_until IS NOT NULL AND trial_until > NOW() THEN TRUE
                     ELSE FALSE
@@ -1312,7 +1313,6 @@ def webhook():
                     ON CONFLICT (business_connection_id)
                     DO UPDATE SET
                         owner_id = EXCLUDED.owner_id,
-                        is_active = EXCLUDED.is_active,
                         trial_until = COALESCE(
                             owners.trial_until,
                             EXCLUDED.trial_until
