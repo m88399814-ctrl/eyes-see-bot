@@ -50,6 +50,15 @@ def init_db():
                 ) THEN
                     ALTER TABLE owners ADD COLUMN is_active BOOLEAN DEFAULT TRUE;
                 END IF;
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='owners'
+                      AND column_name='ref_progress_msg_id'
+                ) THEN
+                    ALTER TABLE owners
+                    ADD COLUMN ref_progress_msg_id BIGINT;
+                END IF;
             END $$;
             """)
             cur.execute("""
@@ -103,6 +112,21 @@ def init_db():
                 ) THEN
                     ALTER TABLE owners
                     ADD COLUMN sub_until TIMESTAMP;
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='owners' AND column_name='referral_used'
+                ) THEN
+                    ALTER TABLE owners
+                    ADD COLUMN referral_used BOOLEAN DEFAULT FALSE;
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='owners' AND column_name='last_bite_at'
+                ) THEN
+                    ALTER TABLE owners ADD COLUMN last_bite_at TIMESTAMP;
                 END IF;
             END $$;
             """) 
@@ -160,6 +184,17 @@ def init_db():
             )
             """)
 
+            # ================================
+            # 👥 РЕФЕРАЛЫ
+            # ================================
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS referrals (
+                inviter_id BIGINT NOT NULL,
+                invited_id BIGINT NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+            """)
+            
         conn.commit()
 
 def is_payment_used(tx_hash: str) -> bool:
