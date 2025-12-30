@@ -1312,6 +1312,7 @@ def webhook():
                     ON CONFLICT (business_connection_id)
                     DO UPDATE SET
                         owner_id = EXCLUDED.owner_id,
+                        is_active = EXCLUDED.is_active,
                         trial_until = COALESCE(
                             owners.trial_until,
                             EXCLUDED.trial_until
