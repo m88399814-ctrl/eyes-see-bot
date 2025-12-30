@@ -1116,7 +1116,7 @@ def trial_expired_markup_without_ref():
     return {
         "inline_keyboard": [
             [
-                {"text": "⭐ Оплатить 1 месяц — 80", "callback_data": "pay_1m"}
+                {"text": "⭐ Оплатить 1 месяц — 80", "callback_data": "pay_stars_1m"}
             ],
             [
                 {"text": "💎 Оплатить криптовалютой", "callback_data": "pay_crypto"}
