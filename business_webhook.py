@@ -2121,15 +2121,34 @@ def webhook():
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         
             start_date, end_date = get_trial_dates(owner_id)
-            ref_link = get_ref_link(owner_id)
         
-            tg("editMessageText", {
-                "chat_id": chat_id,
-                "message_id": mid,
-                "text": trial_expired_text(start_date, end_date, ref_link),
-                "parse_mode": "HTML",
-                "reply_markup": trial_expired_markup(ref_link)
-            })
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT referral_used FROM owners WHERE owner_id = %s",
+                        (owner_id,)
+                    )
+                    row = cur.fetchone()
+                    referral_used = row[0] if row else False
+        
+            if referral_used:
+                tg("editMessageText", {
+                    "chat_id": chat_id,
+                    "message_id": mid,
+                    "text": trial_expired_text_without_ref(start_date, end_date),
+                    "parse_mode": "HTML",
+                    "reply_markup": trial_expired_markup_without_ref()
+                })
+            else:
+                ref_link = get_ref_link(owner_id)
+                tg("editMessageText", {
+                    "chat_id": chat_id,
+                    "message_id": mid,
+                    "text": trial_expired_text(start_date, end_date, ref_link),
+                    "parse_mode": "HTML",
+                    "reply_markup": trial_expired_markup(ref_link)
+                })
+        
             return "ok"
 
         if cd == "pay_crypto":
