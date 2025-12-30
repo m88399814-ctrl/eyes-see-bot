@@ -335,7 +335,6 @@ def has_access(owner_id: int) -> bool:
             cur.execute("""
             SELECT
                 CASE
-                    WHEN is_active = FALSE THEN FALSE
                     WHEN sub_until IS NOT NULL AND sub_until > NOW() THEN TRUE
                     WHEN sub_until IS NULL AND trial_until IS NOT NULL AND trial_until > NOW() THEN TRUE
                     ELSE FALSE
