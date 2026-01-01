@@ -763,7 +763,18 @@ def hide_markup(token: str):
             [{"text": "✖️ Скрыть", "callback_data": f"hide:{token}"}]
         ]
     }
+    
 
+def copy_original_message(to_chat_id, from_chat_id, message_id, token):
+    hide = hide_markup(token)
+    r = tg("copyMessage", {
+        "chat_id": to_chat_id,
+        "from_chat_id": from_chat_id,
+        "message_id": message_id,
+        "reply_markup": hide
+    })
+    return r.ok
+    
 def send_media(chat_id, msg_type, file_id, token):
     hide = hide_markup(token)
     try:
