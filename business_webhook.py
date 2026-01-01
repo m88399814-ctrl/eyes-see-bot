@@ -1413,6 +1413,21 @@ def webhook():
             rep_id = rep_from.get("id", 0)
             rep_name = rep_from.get("first_name", "Без имени")
 
+            ok = copy_original_message(
+                to_chat_id=owner_id,
+                from_chat_id=chat_id,
+                message_id=replied.get("message_id"),
+                token=token
+            )
+            
+            if not ok:
+                send_text(
+                    owner_id,
+                    "❌ <b>Не получилось сохранить файл</b>\n"
+                    "Telegram запретил доступ к медиа 😔"
+                )
+                return "ok"
+                
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
