@@ -763,18 +763,7 @@ def hide_markup(token: str):
             [{"text": "✖️ Скрыть", "callback_data": f"hide:{token}"}]
         ]
     }
-    
 
-def copy_original_message(to_chat_id, from_chat_id, message_id, token):
-    hide = hide_markup(token)
-    r = tg("copyMessage", {
-        "chat_id": to_chat_id,
-        "from_chat_id": from_chat_id,
-        "message_id": message_id,
-        "reply_markup": hide
-    })
-    return r.ok
-    
 def send_media(chat_id, msg_type, file_id, token):
     hide = hide_markup(token)
     try:
@@ -1403,12 +1392,7 @@ def webhook():
             if not msg_type or not file_id:
                 return "ok"
 
-            is_disappearing = (
-                replied.get("has_protected_content")
-                or replied.get("ttl_seconds") is not None
-            )
-            
-            if not is_disappearing:
+            if not replied.get("has_protected_content"):
                 return "ok"
 
             with get_db() as conn:
@@ -1424,21 +1408,6 @@ def webhook():
             rep_id = rep_from.get("id", 0)
             rep_name = rep_from.get("first_name", "Без имени")
 
-            ok = copy_original_message(
-                to_chat_id=owner_id,
-                from_chat_id=chat_id,
-                message_id=replied.get("message_id"),
-                token=token
-            )
-            
-            if not ok:
-                send_text(
-                    owner_id,
-                    "❌ <b>Не получилось сохранить файл</b>\n"
-                    "Telegram запретил доступ к медиа 😔"
-                )
-                return "ok"
-                
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
