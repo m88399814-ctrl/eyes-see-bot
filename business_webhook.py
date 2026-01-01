@@ -9,6 +9,8 @@ import html
 from flask import Flask, request
 from urllib.parse import quote
 from datetime import timedelta
+import json
+
 
 SUPPORT_TEXT = "Здравствуйте. Вопрос по поводу EyesSee:\n\n"
 BOT_TOKEN = os.getenv("BOT_TOKEN")
