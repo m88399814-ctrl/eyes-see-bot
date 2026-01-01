@@ -770,6 +770,7 @@ def send_media(chat_id, msg_type, file_id, token):
         if msg_type == "photo":
             r = tg("sendPhoto", {"chat_id": chat_id, "photo": file_id, "reply_markup": hide})
             if not r.ok:
+                # Пробуем как документ
                 r2 = tg("sendDocument", {"chat_id": chat_id, "document": file_id, "reply_markup": hide})
                 if not r2.ok:
                     raise Exception("Photo send failed")
@@ -788,24 +789,30 @@ def send_media(chat_id, msg_type, file_id, token):
             return
 
         if msg_type == "video_note":
+            # Видео-заметки (кружки) - специальный тип
             r = tg("sendVideoNote", {"chat_id": chat_id, "video_note": file_id, "reply_markup": hide})
             if not r.ok:
+                # Пробуем как обычное видео
                 r2 = tg("sendVideo", {"chat_id": chat_id, "video": file_id, "reply_markup": hide})
                 if not r2.ok:
                     raise Exception("Video note send failed")
             return
 
+        # По умолчанию как документ
         r = tg("sendDocument", {"chat_id": chat_id, "document": file_id, "reply_markup": hide})
         if not r.ok:
             raise Exception("Document send failed")
 
-    except Exception:
+    except Exception as e:
+        # Логируем ошибку для отладки
+        print(f"Send media error: {e}")
         resp = tg("getFile", {"file_id": file_id})
         if not resp.ok:
             send_text(chat_id,
                       "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
                       hide)
             return
+        
         data = resp.json()
         if not data.get("ok") or "result" not in data:
             send_text(chat_id,
@@ -890,6 +897,7 @@ def media_from_message(m):
         return "voice", m["voice"].get("file_id")
     if "video" in m and isinstance(m["video"], dict):
         return "video", m["video"].get("file_id")
+    # Проверяем document на изображение
     if "document" in m and isinstance(m["document"], dict):
         fid = m["document"].get("file_id")
         mime = (m["document"].get("mime_type") or "").lower()
@@ -898,6 +906,17 @@ def media_from_message(m):
         return "document", fid
     if "animation" in m and isinstance(m["animation"], dict):
         return "video", m["animation"].get("file_id")
+    
+    # Добавляем проверку на наличие медиа в исчезающих сообщениях
+    if m.get("has_protected_content"):
+        # Проверяем различные типы медиа в защищённых сообщениях
+        for media_type in ["photo", "video", "video_note", "voice", "document"]:
+            if media_type in m and isinstance(m[media_type], (dict, list)):
+                if media_type == "photo" and isinstance(m[media_type], list):
+                    return "photo", m[media_type][-1].get("file_id")
+                elif isinstance(m[media_type], dict):
+                    return media_type, m[media_type].get("file_id")
+    
     return None, None
 
 def label_for(msg_type: str) -> str:
@@ -1265,6 +1284,9 @@ def webhook():
     cleanup_old()
     if not data:
         return "ok"
+
+    # Для отладки
+    print(f"DEBUG: Received webhook data: {json.dumps(data, ensure_ascii=False)[:500]}")
     # 1) подключение / отключение бизнес-аккаунта
     if "business_connection" in data:
         bc = data["business_connection"]
@@ -1388,17 +1410,53 @@ def webhook():
         if sender.get("id") == owner_id and "reply_to_message" in msg:
             replied = msg["reply_to_message"]
 
-            msg_type, file_id = media_from_message(replied)
-            if not msg_type or not file_id:
-                return "ok"
-
+            # Проверяем, что сообщение действительно исчезающее
             if not replied.get("has_protected_content"):
                 return "ok"
 
+            # Проверяем все возможные типы медиа
+            msg_type = None
+            file_id = None
+            
+            # Ищем медиа в сообщении
+            for media_key in ["photo", "video", "video_note", "voice", "document", "animation"]:
+                if media_key in replied:
+                    if media_key == "photo" and isinstance(replied["photo"], list):
+                        msg_type = "photo"
+                        file_id = replied["photo"][-1].get("file_id")
+                        break
+                    elif isinstance(replied[media_key], dict):
+                        if media_key == "animation":
+                            msg_type = "video"  # Анимации как видео
+                        else:
+                            msg_type = media_key
+                        file_id = replied[media_key].get("file_id")
+                        break
+            
+            # Если медиа не найдено, проверяем текст
+            if not msg_type and replied.get("text"):
+                msg_type = "text"
+            
+            if not msg_type:
+                return "ok"
+
+            # Для фото и видео-заметок убедитесь, что тип определяется правильно
+            if msg_type == "video_note":
+                # Видео-заметки (кружки) - отдельный тип
+                msg_type = "video_note"
+            elif msg_type == "photo":
+                # Фото - отдельный тип
+                msg_type = "photo"
+
+            # Проверяем, не сохранено ли уже
             with get_db() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT 1 FROM messages WHERE owner_id=%s AND file_id=%s LIMIT 1",
-                                (owner_id, file_id))
+                    if file_id:
+                        cur.execute("SELECT 1 FROM messages WHERE owner_id=%s AND file_id=%s LIMIT 1",
+                                    (owner_id, file_id))
+                    else:
+                        cur.execute("SELECT 1 FROM messages WHERE owner_id=%s AND text=%s LIMIT 1",
+                                    (owner_id, replied.get("text", "")))
                     if cur.fetchone():
                         return "ok"
 
@@ -1421,14 +1479,19 @@ def webhook():
                         rep_name,
                         replied.get("message_id", 0),
                         msg_type,
-                        None,
+                        replied.get("text") if msg_type == "text" else None,
                         file_id,
                         token
                     ))
                 conn.commit()
 
             header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
-            body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
+            
+            if msg_type == "text":
+                body = f'<blockquote>{html.escape(replied.get("text", ""))}</blockquote>'
+            else:
+                body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
+            
             who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
             inc_disappear_count(owner_id)
             send_text(owner_id, header + body + who)
