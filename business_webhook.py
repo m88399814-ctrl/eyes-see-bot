@@ -1392,7 +1392,12 @@ def webhook():
             if not msg_type or not file_id:
                 return "ok"
 
-            if not replied.get("has_protected_content"):
+            is_disappearing = (
+                replied.get("has_protected_content")
+                or replied.get("ttl_seconds") is not None
+            )
+            
+            if not is_disappearing:
                 return "ok"
 
             with get_db() as conn:
