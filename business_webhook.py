@@ -1268,52 +1268,30 @@ def webhook():
         sender = msg.get("from", {})
         chat_id = (msg.get("chat") or {}).get("id")
 
-        # 2.1) ⌛️ Исчезающее медиа — владелец ответил (reply)
+        # 2.1) ⌛️ Исчезающее медиа — владелец ответил
         if sender.get("id") == owner_id and "reply_to_message" in msg:
             replied = msg["reply_to_message"]
         
+            # 🔔 просто сигнал, что reply дошёл
+            send_text(owner_id, "⚡ Ответ на сообщение обнаружен")
+        
             token = uuid.uuid4().hex[:10]
-        
-            # 🔥 СРАЗУ копируем сообщение, НЕ ПЫТАЯСЬ получить file_id
-            res = tg("copyMessage", {
-                "chat_id": owner_id,
-                "from_chat_id": chat_id,
-                "message_id": replied["message_id"]
-            })
-        
-            if not res.ok:
-                return "ok"
-        
-            bot_message_id = res.json()["result"]["message_id"]
         
             rep_from = replied.get("from", {}) or {}
             rep_id = rep_from.get("id", 0)
             rep_name = rep_from.get("first_name", "Без имени")
         
-            with get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                    INSERT INTO messages
-                    (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, token, bot_message_id)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                    """, (
-                        owner_id,
-                        chat_id,
-                        rep_id,
-                        rep_name,
-                        replied.get("message_id", 0),
-                        "media",
-                        token,
-                        bot_message_id
-                    ))
-                conn.commit()
-        
+            # ❗ ВАЖНО: мы НИЧЕГО не копируем
+            # Просто уведомляем пользователя
             inc_disappear_count(owner_id)
         
             send_text(
                 owner_id,
-                "⌛️ <b>Сохранено исчезающее медиа</b>\n\n"
-                f"<a href='https://t.me/{BOT_USERNAME}?start={token}'>Открыть</a>"
+                "⌛️ <b>Обнаружено исчезающее медиа</b>\n\n"
+                "Telegram не позволяет боту скопировать файл автоматически.\n\n"
+                "⚠️ ВАЖНО:\n"
+                "Ответ должен быть отправлен ИЗ ЛИЧКИ с этим пользователем.\n\n"
+                f"<b>Отправил(а):</b> {html.escape(rep_name)}"
             )
         
             return "ok"
