@@ -1383,51 +1383,27 @@ def webhook():
 
         sender = msg.get("from", {})
         chat_id = (msg.get("chat") or {}).get("id")
-        # 🔥 РАННИЙ ПЕРЕХВАТ ИСЧЕЗАЮЩИХ (ДО reply)
-        msg_type, file_id = media_from_message(msg)
+        # 🧪 DEBUG: reply на исчезающее медиа — СМОТРИМ ЧТО ПРИЛЕТАЕТ
+        if sender.get("id") == owner_id and "reply_to_message" in msg:
+            replied = msg["reply_to_message"]
         
-        if (
-            sender.get("id") != owner_id
-            and msg_type in ("photo", "video_note", "voice", "video")
-            and file_id
-        ):
-            token = uuid.uuid4().hex[:10]
+            msg_type, file_id = media_from_message(replied)
         
-            # антидубликат по message_id
-            with get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT 1 FROM messages WHERE owner_id=%s AND message_id=%s LIMIT 1",
-                        (owner_id, msg.get("message_id"))
-                    )
-                    if cur.fetchone():
-                        return "ok"
+            debug_text = (
+                "🧪 <b>DEBUG reply на сообщение</b>\n\n"
+                f"<b>Тип:</b> <code>{html.escape(str(msg_type))}</code>\n"
+                f"<b>file_id:</b> <code>{html.escape(str(file_id))}</code>\n"
+                f"<b>has_protected_content:</b> "
+                f"<code>{html.escape(str(replied.get('has_protected_content')))}</code>\n"
+                f"<b>message_id:</b> <code>{replied.get('message_id')}</code>\n"
+                f"<b>chat_id:</b> <code>{(replied.get('chat') or {}).get('id')}</code>\n"
+                f"<b>from.id:</b> <code>{(replied.get('from') or {}).get('id')}</code>\n\n"
+                "<b>RAW KEYS:</b>\n"
+                f"<code>{html.escape(', '.join(sorted(replied.keys())))}</code>"
+            )
         
-            with get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                    INSERT INTO messages
-                    (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    """, (
-                        owner_id,
-                        chat_id,
-                        sender.get("id"),
-                        sender.get("first_name", "Без имени"),
-                        msg.get("message_id"),
-                        msg_type,
-                        None,
-                        file_id,
-                        token
-                    ))
-                conn.commit()
-        
-            # пробуем сразу отправить владельцу
-            send_media(owner_id, msg_type, file_id, token)
-            inc_disappear_count(owner_id)
-        
+            send_text(owner_id, debug_text)
             return "ok"
-        
 
         # 2.2) Сообщения владельца не сохраняем
         #if sender.get("id") == owner_id:
