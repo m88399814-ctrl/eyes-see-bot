@@ -1383,31 +1383,26 @@ def webhook():
 
         sender = msg.get("from", {})
         chat_id = (msg.get("chat") or {}).get("id")
-
-        # 2.1) Исчезающее: владелец ответил (reply) на сообщение
-        if sender.get("id") == owner_id and "reply_to_message" in msg:
-            replied = msg["reply_to_message"]
-
-            msg_type, file_id = media_from_message(replied)
-            if not msg_type or not file_id:
-                return "ok"
-
-            if not replied.get("has_protected_content"):
-                return "ok"
-
+        # 🔥 РАННИЙ ПЕРЕХВАТ ИСЧЕЗАЮЩИХ (ДО reply)
+        msg_type, file_id = media_from_message(msg)
+        
+        if (
+            sender.get("id") != owner_id
+            and msg_type in ("photo", "video_note", "voice", "video")
+            and file_id
+        ):
+            token = uuid.uuid4().hex[:10]
+        
+            # антидубликат по message_id
             with get_db() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT 1 FROM messages WHERE owner_id=%s AND file_id=%s LIMIT 1",
-                                (owner_id, file_id))
+                    cur.execute(
+                        "SELECT 1 FROM messages WHERE owner_id=%s AND message_id=%s LIMIT 1",
+                        (owner_id, msg.get("message_id"))
+                    )
                     if cur.fetchone():
                         return "ok"
-
-            token = uuid.uuid4().hex[:10]
-
-            rep_from = replied.get("from", {}) or {}
-            rep_id = rep_from.get("id", 0)
-            rep_name = rep_from.get("first_name", "Без имени")
-
+        
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
@@ -1417,22 +1412,22 @@ def webhook():
                     """, (
                         owner_id,
                         chat_id,
-                        rep_id,
-                        rep_name,
-                        replied.get("message_id", 0),
+                        sender.get("id"),
+                        sender.get("first_name", "Без имени"),
+                        msg.get("message_id"),
                         msg_type,
                         None,
                         file_id,
                         token
                     ))
                 conn.commit()
-
-            header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
-            body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
-            who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
+        
+            # пробуем сразу отправить владельцу
+            send_media(owner_id, msg_type, file_id, token)
             inc_disappear_count(owner_id)
-            send_text(owner_id, header + body + who)
+        
             return "ok"
+        
 
         # 2.2) Сообщения владельца не сохраняем
         #if sender.get("id") == owner_id:
