@@ -1268,52 +1268,54 @@ def webhook():
         sender = msg.get("from", {})
         chat_id = (msg.get("chat") or {}).get("id")
 
-        # 2.1) Исчезающее: владелец ответил (reply) на сообщение
+        # 2.1) ⌛️ Исчезающее медиа — владелец ответил (reply)
         if sender.get("id") == owner_id and "reply_to_message" in msg:
             replied = msg["reply_to_message"]
         
-            msg_type, file_id = media_from_message(replied)
+            token = uuid.uuid4().hex[:10]
+        
+            # 🔥 СРАЗУ копируем сообщение, НЕ ПЫТАЯСЬ получить file_id
+            res = tg("copyMessage", {
+                "chat_id": owner_id,
+                "from_chat_id": chat_id,
+                "message_id": replied["message_id"]
+            })
+        
+            if not res.ok:
+                return "ok"
+        
+            bot_message_id = res.json()["result"]["message_id"]
+        
             rep_from = replied.get("from", {}) or {}
             rep_id = rep_from.get("id", 0)
             rep_name = rep_from.get("first_name", "Без имени")
-        
-            # Если Bot API не дал file_id / тип — значит это недоступно боту (нормально для исчезающих фото/кружков)
-            if not msg_type or not file_id:
-                header = "⌛️ <b>Исчезающее медиа:</b>\n\n"
-                body = "<blockquote>Бот увидел, что ты ответил на медиа, но Telegram не дал доступ к файлу через Bot API.</blockquote>"
-                who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
-                inc_disappear_count(owner_id)
-                send_text(owner_id, header + body + who)
-                return "ok"
-        
-            # Если file_id есть — просто уведомляем и сохраняем токен (как у тебя было)
-            # (это работает только для тех медиа, которые Bot API реально отдаёт)
-            token = uuid.uuid4().hex[:10]
         
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
                     INSERT INTO messages
-                    (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, token, bot_message_id)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                     """, (
                         owner_id,
                         chat_id,
                         rep_id,
                         rep_name,
                         replied.get("message_id", 0),
-                        msg_type,
-                        None,
-                        file_id,
-                        token
+                        "media",
+                        token,
+                        bot_message_id
                     ))
                 conn.commit()
         
-            header = "⌛️ <b>Новое медиа (по reply):</b>\n\n"
-            body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
-            who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
             inc_disappear_count(owner_id)
-            send_text(owner_id, header + body + who)
+        
+            send_text(
+                owner_id,
+                "⌛️ <b>Сохранено исчезающее медиа</b>\n\n"
+                f"<a href='https://t.me/{BOT_USERNAME}?start={token}'>Открыть</a>"
+            )
+        
             return "ok"
 
         # 2.2) Сообщения владельца не сохраняем
@@ -1804,7 +1806,7 @@ def webhook():
                 with get_db() as conn:
                     with conn.cursor() as cur:
                         cur.execute("""
-                        SELECT message_id
+                        SELECT bot_message_id
                         FROM messages
                         WHERE owner_id = %s AND token = %s
                         """, (owner_id, payload))
