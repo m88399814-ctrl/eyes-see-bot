@@ -882,10 +882,10 @@ def send_media(chat_id, msg_type, file_id, token):
         return
 
 def media_from_message(m):
-    if "photo" in m and isinstance(m["photo"], list) and len(m["photo"]) > 0:
-        return "photo", m["photo"][-1].get("file_id")
     if "video_note" in m and isinstance(m["video_note"], dict):
         return "video_note", m["video_note"].get("file_id")
+    if "photo" in m and isinstance(m["photo"], list) and len(m["photo"]) > 0:
+        return "photo", m["photo"][-1].get("file_id")
     if "voice" in m and isinstance(m["voice"], dict):
         return "voice", m["voice"].get("file_id")
     if "video" in m and isinstance(m["video"], dict):
@@ -1390,9 +1390,6 @@ def webhook():
 
             msg_type, file_id = media_from_message(replied)
             if not msg_type or not file_id:
-                return "ok"
-
-            if not replied.get("has_protected_content"):
                 return "ok"
 
             with get_db() as conn:
