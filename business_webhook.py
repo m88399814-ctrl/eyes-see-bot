@@ -1384,63 +1384,30 @@ def webhook():
         sender = msg.get("from", {})
         chat_id = (msg.get("chat") or {}).get("id")
 
-        # 2.1) REPLY НА МЕДИА (обычное + кружки) — ТЕСТ/ЛОВЛЯ
-        # ✅ ловим reply владельца на ЛЮБОЕ медиа (photo / video_note / voice / video / document)
-        # ✅ если медиа protected/таймер — честно пишем что файл недоступен
-        # ✅ если обычное — сохраняем token и кидаем ссылку, как с видео
+        # 2.1) Исчезающее: владелец ответил (reply) на сообщение
         if sender.get("id") == owner_id and "reply_to_message" in msg:
             replied = msg["reply_to_message"]
-        
-            # кто отправил исходное сообщение
+
+            msg_type, file_id = media_from_message(replied)
+            if not msg_type or not file_id:
+                return "ok"
+
+            if not replied.get("has_protected_content"):
+                return "ok"
+
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1 FROM messages WHERE owner_id=%s AND file_id=%s LIMIT 1",
+                                (owner_id, file_id))
+                    if cur.fetchone():
+                        return "ok"
+
+            token = uuid.uuid4().hex[:10]
+
             rep_from = replied.get("from", {}) or {}
             rep_id = rep_from.get("id", 0)
             rep_name = rep_from.get("first_name", "Без имени")
-        
-            # что за медиа в replied
-            msg_type, file_id = media_from_message(replied)
-        
-            # DEBUG: чтобы понять вообще что прилетает
-            dbg = (
-                "⚡️ <b>Ответ на сообщение обнаружен</b>\n\n"
-                f"<b>Тип:</b> <code>{html.escape(str(msg_type))}</code>\n"
-                f"<b>Protected:</b> <code>{html.escape(str(bool(replied.get('has_protected_content'))))}</code>\n"
-                f"<b>file_id:</b> <code>{html.escape(str(file_id))}</code>\n"
-                f"\n<b>Отправил(а):</b> <a href=\"tg://user?id={rep_id}\">{html.escape(rep_name)}</a>"
-            )
-            send_text(owner_id, dbg)
-        
-            # если вообще не медиа — выходим (это reply на текст)
-            if not msg_type:
-                return "ok"
-        
-            # если защищённое / таймер / одноразовое — BOT API не даст файл
-            # (иногда msg_type будет, а file_id нет — это как раз тот случай)
-            if replied.get("has_protected_content") or not file_id:
-                header = "⌛️ <b>Исчезающее/защищённое медиа:</b>\n\n"
-                body = (
-                    "<blockquote>"
-                    "Telegram не даёт боту доступ к этому файлу через Bot API.\n"
-                    "Это нормально для таймера/одноразовых и защищённых медиа."
-                    "</blockquote>"
-                )
-                who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
-                inc_disappear_count(owner_id)
-                send_text(owner_id, header + body + who)
-                return "ok"
-        
-            # ✅ обычное медиа (фото/кружок/гс/видео) — сохраняем и даём ссылку
-            # антидубликат (по file_id)
-            with get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT 1 FROM messages WHERE owner_id=%s AND file_id=%s LIMIT 1",
-                        (owner_id, file_id)
-                    )
-                    if cur.fetchone():
-                        return "ok"
-        
-            token = uuid.uuid4().hex[:10]
-        
+
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
@@ -1459,14 +1426,13 @@ def webhook():
                         token
                     ))
                 conn.commit()
-        
-            header = "✅ <b>Новое медиа (по reply):</b>\n\n"
+
+            header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
             body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
             who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
+            inc_disappear_count(owner_id)
             send_text(owner_id, header + body + who)
             return "ok"
-
-
 
         # 2.2) Сообщения владельца не сохраняем
         #if sender.get("id") == owner_id:
