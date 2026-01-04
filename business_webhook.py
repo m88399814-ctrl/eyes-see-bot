@@ -116,6 +116,7 @@ def download_and_save_media(file_id, token, msg_type):
     except Exception as e:
         print(f"Ошибка скачивания медиа: {e}")
         return None
+
 SUPPORT_TEXT = "Здравствуйте. Вопрос по поводу EyesSee:\n\n"
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -1496,12 +1497,7 @@ def webhook():
             rep_id = rep_from.get("id", 0)
             rep_name = rep_from.get("first_name", "Без имени")
             
-            
-
-            # После того как определили msg_type и file_id для исчезающего медиа:
-            # Скачиваем и сохраняем медиа СРАЗУ
-            media_url = download_and_save_media(file_id, token, msg_type)
-            
+            # Сохраняем в базу
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
@@ -1521,50 +1517,12 @@ def webhook():
                     ))
                 conn.commit()
             
-            # Уведомление для исчезающего медиа
-            if media_url:
-                # Если медиа сохранили, отправляем с локальной ссылкой
-                caption = f"⌛️ <b>Перехвачено исчезающее {label_for(msg_type).lower()}</b>\n\n<b>Отправил(а):</b> <a href='tg://user?id={rep_id}'>{html.escape(rep_name)}</a>"
-                
-                # Для разных типов медиа используем разные методы отправки
-                if msg_type == "photo":
-                    tg("sendPhoto", {
-                        "chat_id": owner_id,
-                        "photo": f"https://eyes-see-bot.onrender.com{media_url}",
-                        "caption": caption,
-                        "parse_mode": "HTML",
-                        "reply_markup": hide_markup(token)
-                    })
-                elif msg_type == "video" or msg_type == "video_note":
-                    tg("sendVideo", {
-                        "chat_id": owner_id,
-                        "video": f"https://eyes-see-bot.onrender.com{media_url}",
-                        "caption": caption,
-                        "parse_mode": "HTML",
-                        "reply_markup": hide_markup(token)
-                    })
-                elif msg_type == "voice":
-                    tg("sendVoice", {
-                        "chat_id": owner_id,
-                        "voice": f"https://eyes-see-bot.onrender.com{media_url}",
-                        "caption": caption,
-                        "parse_mode": "HTML",
-                        "reply_markup": hide_markup(token)
-                    })
-                else:
-                    tg("sendDocument", {
-                        "chat_id": owner_id,
-                        "document": f"https://eyes-see-bot.onrender.com{media_url}",
-                        "caption": caption,
-                        "parse_mode": "HTML",
-                        "reply_markup": hide_markup(token)
-                    })
-            else:
-                # Если не сохранили, отправляем ссылку
-                header = "⌛️ <b>Перехвачено исчезающее медиа:</b>\n\n"
-                body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
-                who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
-                send_text(owner_id, header + body + who)
+            # ИСПРАВЛЕНИЕ: Используем старый формат из второго кода
+            header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
+            body = f'{label_for(msg_type)}\n\n'
+            who = f'<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
+            
+            send_text(owner_id, header + body + who, hide_markup(token))
             
             # Увеличиваем счетчик исчезающих медиа
             inc_disappear_count(owner_id)
