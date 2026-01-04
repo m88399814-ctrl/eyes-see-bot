@@ -328,7 +328,32 @@ def cleanup_old():
                         print(f"🗑️ Удалил старый медиафайл: {filename}")
     except Exception as e:
         print(f"❌ Ошибка при очистке медиа-файлов: {e}")
-        
+
+
+def send_to_all_owners(message_text):
+    """Отправить сообщение всем активным владельцам бота"""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            # Получаем всех активных владельцев
+            cur.execute("""
+                SELECT DISTINCT owner_id 
+                FROM owners 
+                WHERE is_active = TRUE
+            """)
+            owners = cur.fetchall()
+    
+    count = 0
+    for owner_id_row in owners:
+        owner_id = owner_id_row[0]
+        try:
+            send_text(owner_id, message_text)
+            count += 1
+            time.sleep(0.1)  # Задержка чтобы не превысить лимиты API
+        except Exception as e:
+            print(f"Ошибка отправки owner_id {owner_id}: {e}")
+    
+    return count
+    
 def is_payment_used(tx_hash: str) -> bool:
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -1810,6 +1835,29 @@ def webhook():
             
         if text == "/help" or text == f"/help@{BOT_USERNAME}":
             send_text(chat_id, help_text(), help_markup())
+            return "ok"
+        
+        # ДОБАВЬТЕ ЭТО СРАЗУ ПОСЛЕ:
+        if text.startswith("/broadcast"):
+            # Проверяем что это админ (ЗАМЕНИТЕ 123456789 на ваш реальный Telegram ID)
+            ADMIN_ID = 5673790167  # Ваш Telegram ID
+            
+            if owner_id != ADMIN_ID:
+                send_text(chat_id, "⛔️ У вас нет прав для этой команды")
+                return "ok"
+            
+            # Получаем текст после команды
+            parts = text.split(maxsplit=1)
+            if len(parts) < 2:
+                send_text(chat_id, "Использование: /broadcast текст сообщения")
+                return "ok"
+            
+            broadcast_text = parts[1]
+            
+            # Отправляем всем
+            count = send_to_all_owners(broadcast_text)
+            
+            send_text(chat_id, f"✅ Сообщение отправлено {count} пользователям")
             return "ok"
         
         if text.startswith("/start"):
