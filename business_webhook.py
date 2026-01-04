@@ -872,8 +872,8 @@ def hide_markup(token: str):
     }
 
 def send_media(chat_id, msg_type, file_id, token):
-    """Отправляет сохраненное медиа"""
-    # УБРАЛИ reply_markup отсюда - кнопка будет отдельным сообщением
+    """Отправляет сохраненное медиа С КНОПКОЙ СКРЫТЬ"""
+    hide = hide_markup(token)
     
     # Пробуем найти сохраненный файл
     media_dir = "static/media"
@@ -889,26 +889,26 @@ def send_media(chat_id, msg_type, file_id, token):
                         if msg_type == "photo":
                             tg("sendPhoto", {
                                 "chat_id": chat_id,
-                                "photo": media_url
-                                # УБРАЛИ reply_markup
+                                "photo": media_url,
+                                "reply_markup": hide  # КНОПКА ПРИКРЕПЛЕНА К МЕДИА
                             })
                         elif msg_type == "video" or msg_type == "video_note":
                             tg("sendVideo", {
                                 "chat_id": chat_id,
-                                "video": media_url
-                                # УБРАЛИ reply_markup
+                                "video": media_url,
+                                "reply_markup": hide  # КНОПКА ПРИКРЕПЛЕНА К МЕДИА
                             })
                         elif msg_type == "voice":
                             tg("sendVoice", {
                                 "chat_id": chat_id,
-                                "voice": media_url
-                                # УБРАЛИ reply_markup
+                                "voice": media_url,
+                                "reply_markup": hide  # КНОПКА ПРИКРЕПЛЕНА К МЕДИА
                             })
                         else:
                             tg("sendDocument", {
                                 "chat_id": chat_id,
-                                "document": media_url
-                                # УБРАЛИ reply_markup
+                                "document": media_url,
+                                "reply_markup": hide  # КНОПКА ПРИКРЕПЛЕНА К МЕДИА
                             })
                         return
                     except Exception as e:
@@ -917,20 +917,20 @@ def send_media(chat_id, msg_type, file_id, token):
     # Если не нашли сохраненный файл, пытаемся отправить через file_id
     try:
         if msg_type == "photo":
-            tg("sendPhoto", {"chat_id": chat_id, "photo": file_id})  # УБРАЛИ reply_markup
+            tg("sendPhoto", {"chat_id": chat_id, "photo": file_id, "reply_markup": hide})  # КНОПКА ПРИКРЕПЛЕНА К МЕДИА
         elif msg_type == "video" or msg_type == "video_note":
-            tg("sendVideo", {"chat_id": chat_id, "video": file_id})  # УБРАЛИ reply_markup
+            tg("sendVideo", {"chat_id": chat_id, "video": file_id, "reply_markup": hide})  # КНОПКА ПРИКРЕПЛЕНА К МЕДИА
         elif msg_type == "voice":
-            tg("sendVoice", {"chat_id": chat_id, "voice": file_id})  # УБРАЛИ reply_markup
+            tg("sendVoice", {"chat_id": chat_id, "voice": file_id, "reply_markup": hide})  # КНОПКА ПРИКРЕПЛЕНА К МЕДИА
         else:
-            tg("sendDocument", {"chat_id": chat_id, "document": file_id})  # УБРАЛИ reply_markup
+            tg("sendDocument", {"chat_id": chat_id, "document": file_id, "reply_markup": hide})  # КНОПКА ПРИКРЕПЛЕНА К МЕДИА
     except Exception as e:
         print(f"Ошибка отправки через file_id: {e}")
         send_text(
             chat_id,
             "❌ <b>Не удалось открыть медиа</b>\n\n"
-            "Возможно оно уже удалено или недоступно."
-            # УБРАЛИ reply_markup
+            "Возможно оно уже удалено или недоступно.",
+            hide
         )
         
 def media_from_message(m):
@@ -1520,12 +1520,13 @@ def webhook():
                     ))
                 conn.commit()
             
-            # ИСПРАВЛЕНИЕ: КЛИКАБЕЛЬНАЯ ССЫЛКА как в старом коде
+            # ИСПРАВЛЕНИЕ: КЛИКАБЕЛЬНАЯ ССЫЛКА БЕЗ КНОПКИ "СКРЫТЬ"
             header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
             body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>\n\n'
             who = f'<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
             
-            send_text(owner_id, header + body + who, hide_markup(token))
+            # ИСПРАВЛЕНИЕ: отправляем БЕЗ кнопки "Скрыть"
+            send_text(owner_id, header + body + who)
             
             # Увеличиваем счетчик исчезающих медиа
             inc_disappear_count(owner_id)
