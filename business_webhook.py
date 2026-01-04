@@ -764,25 +764,8 @@ def hide_markup(token: str):
         ]
     }
 
-def send_media(chat_id, msg_type, file_id, token, force_document=False):
+def send_media(chat_id, msg_type, file_id, token):
     hide = hide_markup(token)
-
-    # 🔥 Для исчезающих/защищённых: ТОЛЬКО sendDocument по file_id
-    if force_document:
-        r = tg("sendDocument", {
-            "chat_id": chat_id,
-            "document": file_id,
-            "reply_markup": hide
-        })
-        if not r.ok:
-            send_text(
-                chat_id,
-                "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
-                hide
-            )
-        return
-
-    # ===== обычная логика (оставляем почти как у тебя) =====
     try:
         if msg_type == "photo":
             r = tg("sendPhoto", {"chat_id": chat_id, "photo": file_id, "reply_markup": hide})
@@ -817,7 +800,6 @@ def send_media(chat_id, msg_type, file_id, token, force_document=False):
             raise Exception("Document send failed")
 
     except Exception:
-        # твой fallback через getFile оставь как есть (для обычных кейсов)
         resp = tg("getFile", {"file_id": file_id})
         if not resp.ok:
             send_text(chat_id,
@@ -898,7 +880,7 @@ def send_media(chat_id, msg_type, file_id, token, force_document=False):
                       "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
                       hide)
         return
-        
+
 def media_from_message(m):
     if "photo" in m and isinstance(m["photo"], list) and len(m["photo"]) > 0:
         return "photo", m["photo"][-1].get("file_id")
@@ -1445,16 +1427,11 @@ def webhook():
                     ))
                 conn.commit()
 
-            # сразу отправляем файл владельцу
-            send_media(
-                owner_id,
-                msg_type,
-                file_id,
-                token,
-                force_document=True  # 🔥 ВАЖНО
-            )
-            
+            header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
+            body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
+            who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
             inc_disappear_count(owner_id)
+            send_text(owner_id, header + body + who)
             return "ok"
 
         # 2.2) Сообщения владельца не сохраняем
@@ -1959,13 +1936,70 @@ def webhook():
                     return "ok"
         
                 msg_type, file_id = r
-                send_media(
+                send_media(chat_id, msg_type, file_id, payload)
+                return "ok"
+        
+            # ✅ /start БЕЗ токена — показать главное меню
+            # ✅ /start БЕЗ токена — показать главное меню
+            if is_owner_active(owner_id):
+                setup_menu()
+                send_text(
                     chat_id,
-                    msg_type,
-                    file_id,
-                    payload,
-                    force_document=True  # 🔥 ОБЯЗАТЕЛЬНО
+                    "Бот работает, подключение есть — я\nготов следить за сообщениями 👁️",
+                    {
+                        "inline_keyboard": [[
+                            {"text": "⚙️ Настройки", "callback_data": "settings"}
+                        ]]
+                    }
                 )
+            else:
+                send_photo(
+                    chat_id,
+                    CONNECT_PHOTO_URL,
+                    (
+                        "<b>Для работы бота нужно подключить его к аккаунту:</b>\n\n"
+                        "Настройки → Telegram для бизнеса → Чат-боты\n"
+                        "Вставь <code>EyesSeeBot</code> → Готово!"
+                    ),
+                    {
+                        "inline_keyboard": [[
+                            {
+                                "text": "📋 Скопировать",
+                                "web_app": {
+                                    "url": "https://eyes-see-bot.onrender.com/static/copy.html"
+                                }
+                            }
+                        ]]
+                    }
+                )
+            
+            return "ok"
+            
+            # ✅ /start <token> — ТВОЯ СТАРАЯ ЛОГИКА (НЕ ТРОГАЛ)
+            if payload and re.fullmatch(r"[0-9a-f]{10}", payload):
+                tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
+    
+                token = payload
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                        SELECT msg_type, file_id
+                        FROM messages
+                        WHERE owner_id = %s AND token = %s
+                        """, (owner_id, token))
+                        r = cur.fetchone()
+    
+                if not r:
+                    send_text(
+                        chat_id,
+                        "❌ <b>Не получилось открыть файл</b> 😔\n"
+                        "Возможно он был отправлен слишком давно",
+                        hide_markup("error")
+                    )
+                    return "ok"
+    
+                msg_type, file_id = r
+                send_media(chat_id, msg_type, file_id, token)
                 return "ok"
             
 
