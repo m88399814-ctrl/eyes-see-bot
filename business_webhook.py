@@ -1426,8 +1426,7 @@ def webhook():
                     cur.execute("""
                     INSERT INTO messages
                     (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (token) DO NOTHING
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         owner_id,
                         chat_id,
@@ -1490,7 +1489,7 @@ def webhook():
                 cur.execute("""
                 INSERT INTO messages
                 (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     owner_id,
                     chat_id,
