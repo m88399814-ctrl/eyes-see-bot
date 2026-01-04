@@ -1360,6 +1360,7 @@ def webhook():
         msg = data["business_message"]
         bc_id = msg.get("business_connection_id")
         owner_id = get_owner(bc_id)
+        
         # 🔥 БАЙТ-СООБЩЕНИЕ (появляется само)
         if not has_access(owner_id) and can_send_bite(owner_id):
             token = "bite_" + uuid.uuid4().hex[:10]
@@ -1374,6 +1375,7 @@ def webhook():
             )
         
             mark_bite_sent(owner_id)
+        
         if not owner_id:
             return "ok"
         
@@ -1384,36 +1386,48 @@ def webhook():
         sender = msg.get("from", {})
         chat_id = (msg.get("chat") or {}).get("id")
 
-        # 2.1) Исчезающее: владелец ответил (reply) на сообщение
+        # 🔥 ОСНОВНАЯ ЛОГИКА ДЛЯ ИСЧЕЗАЮЩИХ ФОТО
+        # Если владелец отвечает на сообщение с исчезающим контентом
         if sender.get("id") == owner_id and "reply_to_message" in msg:
             replied = msg["reply_to_message"]
-
+            
+            # ⚠️ ВАЖНО: Проверяем, что это ИСЧЕЗАЮЩЕЕ (засекреченное) медиа
+            # У исчезающих фото есть флаг has_protected_content
+            if not replied.get("has_protected_content", False):
+                # Это НЕ исчезающее фото, игнорируем
+                return "ok"
+            
+            # Проверяем, есть ли медиа в сообщении, на которое ответили
             msg_type, file_id = media_from_message(replied)
+            
             if not msg_type or not file_id:
+                # Нет медиа в сообщении
                 return "ok"
-
-            if not replied.get("has_protected_content"):
-                return "ok"
-
+            
+            # Проверяем, не сохраняли ли уже это фото
             with get_db() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT 1 FROM messages WHERE owner_id=%s AND file_id=%s LIMIT 1",
-                                (owner_id, file_id))
+                    cur.execute("""
+                        SELECT 1 FROM messages 
+                        WHERE owner_id=%s AND file_id=%s 
+                        LIMIT 1
+                    """, (owner_id, file_id))
                     if cur.fetchone():
                         return "ok"
-
+            
             token = uuid.uuid4().hex[:10]
-
+            
             rep_from = replied.get("from", {}) or {}
             rep_id = rep_from.get("id", 0)
             rep_name = rep_from.get("first_name", "Без имени")
-
+            
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
                     INSERT INTO messages
                     (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (token) DO NOTHING
                     """, (
                         owner_id,
                         chat_id,
@@ -1426,28 +1440,48 @@ def webhook():
                         token
                     ))
                 conn.commit()
-
-            header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
+            
+            # Уведомление для исчезающего медиа
+            header = "⌛️ <b>Перехвачено исчезающее медиа:</b>\n\n"
             body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
             who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
+            
+            # Для фото сразу отправляем превью
+            if msg_type == "photo":
+                try:
+                    send_media(owner_id, msg_type, file_id, token)
+                except Exception as e:
+                    print(f"Ошибка отправки фото: {e}")
+                    send_text(owner_id, header + body + who)
+            else:
+                send_text(owner_id, header + body + who)
+            
+            # Увеличиваем счетчик исчезающих медиа
             inc_disappear_count(owner_id)
-            send_text(owner_id, header + body + who)
+            
             return "ok"
 
         # 2.2) Сообщения владельца не сохраняем
-        #if sender.get("id") == owner_id:
-            #return "ok"
+        if sender.get("id") == owner_id:
+            return "ok"
 
         # 2.3) Обычные сообщения собеседника -> сохраняем (для удалений)
+        # НО: обычные фото НЕ сохраняем, только текст
         msg_type, file_id = media_from_message(msg)
         text = msg.get("text")
 
-        if not msg_type and not text:
+        # Если это медиа (фото, видео и т.д.) - игнорируем, если только это не исчезающее
+        # Но исчезающие медиа не приходят напрямую, так что этот код не сработает для них
+        if msg_type and not text:
+            # Это обычное медиа, не сохраняем
             return "ok"
 
-        if not msg_type:
-            msg_type = "text"
-            file_id = None
+        if not text:
+            return "ok"
+
+        # Сохраняем только текстовые сообщения
+        msg_type = "text"
+        file_id = None
 
         token = uuid.uuid4().hex[:10]
 
@@ -1489,9 +1523,6 @@ def webhook():
         # 🔒 ПРОВЕРКА ДОСТУПА
         if not has_access(owner_id):
             return "ok"
-        
-
-
 
         # ❌ НЕ показываем удаление сообщений владельца
         with get_db() as conn:
@@ -1559,6 +1590,7 @@ def webhook():
             send_text(owner_id, title + "\n".join(blocks) + who)
     
         return "ok"
+    
     # 4) изменение сообщений (группировка 1 сек)
     if "edited_business_message" in data:
         ebm = data["edited_business_message"]
@@ -1573,7 +1605,6 @@ def webhook():
         # 🔒 ПРОВЕРКА ДОСТУПА
         if not has_access(owner_id):
             return "ok"
-
 
         # ❌ НЕ показываем изменения сообщений владельца
         editor_id = ebm.get("from", {}).get("id")
@@ -1609,6 +1640,7 @@ def webhook():
             f"</blockquote>\n\n"
         )
         who = f"<b>Изменил(а):</b> {editor_link}"
+        
         # если уведомления выключены — только считаем
         if not is_edited_enabled(owner_id):
             inc_edited_count(owner_id)
@@ -1619,7 +1651,6 @@ def webhook():
         send_text(owner_id, title + body_old + body_new + who)
         return "ok"
     
-  
     # 5) /start и /start TOKEN (в личке с ботом)
     if "message" in data:
         msg = data["message"]
@@ -1667,6 +1698,7 @@ def webhook():
                 show_bot_ready(chat_id, owner_id)
         
                 return "ok"
+        
         if text == "/settings" or text == f"/settings@{BOT_USERNAME}":
             send_text(chat_id, settings_text(), settings_markup(owner_id))
             return "ok"
@@ -1674,10 +1706,12 @@ def webhook():
         if text == "/help" or text == f"/help@{BOT_USERNAME}":
             send_text(chat_id, help_text(), help_markup())
             return "ok"
+        
         if text.startswith("/start"):
             parts = text.split(maxsplit=1)
             cmd = parts[0]
             payload = parts[1].strip() if len(parts) > 1 else ""
+            
             # 🔥 BITE TOKEN (/start bite_xxx)
             if payload and payload.startswith("bite_"):
                 tg("deleteMessage", {
@@ -1694,6 +1728,7 @@ def webhook():
                     trial_expired_markup(ref_link)
                 )
                 return "ok"
+            
             if payload.startswith("ref_"):
                 inviter_id = int(payload.replace("ref_", ""))
                 with get_db() as conn:
@@ -1783,6 +1818,7 @@ def webhook():
                                 WHERE owner_id = %s
                             """, (msg_id, inviter_id))
                         conn.commit()
+                
                 # =========================
                 # ✅ ШАГ 3 — ВТОРОЙ РЕФЕРАЛ (2 / 2)
                 # =========================
@@ -1827,20 +1863,8 @@ def webhook():
             if "@" in cmd and cmd != f"/start@{BOT_USERNAME}":
                 return "ok"
 
-
-            
             # 🔐 PAYWALL — ТОЛЬКО ЗДЕСЬ
             if owner_exists(owner_id) and not has_access(owner_id):
-                if payload:
-                    tg("deleteMessage", {
-                        "chat_id": chat_id,
-                        "message_id": msg["message_id"]
-                    })
-            
-                start_date, end_date = get_trial_dates(owner_id)
-                ref_link = get_ref_link(owner_id)
-            
-                
                 if payload:
                     tg("deleteMessage", {
                         "chat_id": chat_id,
@@ -1873,7 +1897,6 @@ def webhook():
                     )
                 return "ok"
 
-            
             # =========================
             # /start БЕЗ токена
             # =========================
@@ -1910,7 +1933,7 @@ def webhook():
                 return "ok"
         
             # =========================
-            # /start <token>
+            # /start <token> - для открытия сохраненных медиа
             # =========================
             if re.fullmatch(r"[0-9a-f]{10}", payload):
                 tg("deleteMessage", {
@@ -1939,8 +1962,7 @@ def webhook():
                 send_media(chat_id, msg_type, file_id, payload)
                 return "ok"
         
-            # ✅ /start БЕЗ токена — показать главное меню
-            # ✅ /start БЕЗ токена — показать главное меню
+            # Если непонятный payload
             if is_owner_active(owner_id):
                 setup_menu()
                 send_text(
@@ -1974,36 +1996,9 @@ def webhook():
                 )
             
             return "ok"
-            
-            # ✅ /start <token> — ТВОЯ СТАРАЯ ЛОГИКА (НЕ ТРОГАЛ)
-            if payload and re.fullmatch(r"[0-9a-f]{10}", payload):
-                tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
-    
-                token = payload
-                with get_db() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("""
-                        SELECT msg_type, file_id
-                        FROM messages
-                        WHERE owner_id = %s AND token = %s
-                        """, (owner_id, token))
-                        r = cur.fetchone()
-    
-                if not r:
-                    send_text(
-                        chat_id,
-                        "❌ <b>Не получилось открыть файл</b> 😔\n"
-                        "Возможно он был отправлен слишком давно",
-                        hide_markup("error")
-                    )
-                    return "ok"
-    
-                msg_type, file_id = r
-                send_media(chat_id, msg_type, file_id, token)
-                return "ok"
-            
 
         return "ok"
+    
     # 6) callback-кнопки
     if "callback_query" in data:
         cq = data["callback_query"]
@@ -2042,6 +2037,7 @@ def webhook():
             })
         
             return "ok"
+        
         if cd == "settings":
             tg("answerCallbackQuery", {
                 "callback_query_id": cq["id"]
@@ -2213,6 +2209,7 @@ def webhook():
                 })
         
             return "ok"
+        
         if cd == "crypto_ton":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         
@@ -2236,6 +2233,7 @@ def webhook():
                 "reply_markup": pay_usdt_markup()
             })
             return "ok"
+        
         if cd == "back_to_crypto":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         
@@ -2247,6 +2245,7 @@ def webhook():
                 "reply_markup": pay_crypto_markup()
             })
             return "ok"
+        
         if cd == "copy_ref":
             tg("answerCallbackQuery", {
                 "callback_query_id": cq["id"],
@@ -2254,6 +2253,7 @@ def webhook():
                 "show_alert": False
             })
             return "ok"
+        
         # ♻️ Восстановить чат — ОТКРЫТЬ МЕНЮ (БЕЗ УДАЛЕНИЯ)
         if cd == "recover_menu":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
@@ -2289,6 +2289,7 @@ def webhook():
             })
         
             return "ok"
+        
         if cd == "toggle_deleted":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
     
@@ -2306,6 +2307,7 @@ def webhook():
             })
     
             return "ok"
+        
         # ⬅️ Назад в настройки
         if cd == "back_to_settings":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
@@ -2318,6 +2320,7 @@ def webhook():
                 "reply_markup": settings_markup(owner_id)
             })
             return "ok"
+        
         # скрыть
         if cd.startswith("hide:"):
             if chat_id and mid:
@@ -2339,9 +2342,7 @@ def webhook():
                 "reply_markup": disappearing_settings_markup()
             })
             return "ok"
-            
         
-
         # === выбран пользователь → показать меню "Открыть чат" (ЧЕРЕЗ EDIT) ===
         if cd.startswith("choose_chat:"):
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
@@ -2421,7 +2422,7 @@ def webhook():
         
             return "ok"
 
-                # === назад к списку пользователей (ЧЕРЕЗ EDIT) ===
+        # === назад к списку пользователей (ЧЕРЕЗ EDIT) ===
         if cd == "back_to_chats":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
 
@@ -2457,6 +2458,7 @@ def webhook():
                 "reply_markup": {"inline_keyboard": kb}
             })
             return "ok"
+        
         # ✏️ Изменённые сообщения — открыть меню
         if cd == "edited_settings":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
@@ -2472,7 +2474,6 @@ def webhook():
                 "reply_markup": edited_settings_markup(enabled)
             })
             return "ok"
-        
         
         # ✏️ Вкл / выкл изменённые
         if cd == "toggle_edited":
@@ -2499,7 +2500,6 @@ def webhook():
                 "show_alert": False
             })
             return "ok"
-
 
         tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         return "ok"
