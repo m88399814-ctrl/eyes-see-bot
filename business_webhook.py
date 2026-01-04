@@ -9,113 +9,6 @@ import html
 from flask import Flask, request
 from urllib.parse import quote
 from datetime import timedelta
-import json
-import io
-
-def download_and_save_photo(file_id, token):
-    """Скачивает фото на сервер и возвращает путь к файлу"""
-    try:
-        # Получаем информацию о файле
-        file_resp = tg("getFile", {"file_id": file_id})
-        
-        if not file_resp.ok:
-            return None
-            
-        file_data = file_resp.json()
-        if not file_data.get("ok"):
-            return None
-            
-        file_path = file_data["result"].get("file_path")
-        if not file_path:
-            return None
-        
-        # Скачиваем файл
-        file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
-        response = requests.get(file_url, timeout=30)
-        
-        if response.status_code != 200:
-            return None
-        
-        # Сохраняем файл локально (в папку static)
-        filename = f"{token}.jpg"
-        save_path = os.path.join("static", "photos", filename)
-        
-        # Создаем папку если её нет
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        
-        # Сохраняем файл
-        with open(save_path, "wb") as f:
-            f.write(response.content)
-        
-        return f"/static/photos/{filename}"
-        
-    except Exception as e:
-        print(f"Ошибка скачивания фото: {e}")
-        return None
-        
-def download_and_save_media(file_id, token, msg_type):
-    """Скачивает любое медиа на сервер и возвращает путь к файлу"""
-    try:
-        # Получаем информацию о файле
-        file_resp = tg("getFile", {"file_id": file_id})
-        
-        if not file_resp.ok:
-            print(f"getFile failed: {file_resp.text}")
-            return None
-            
-        file_data = file_resp.json()
-        if not file_data.get("ok"):
-            print(f"getFile not ok: {file_data}")
-            return None
-            
-        file_path = file_data["result"].get("file_path")
-        if not file_path:
-            print(f"No file_path in response: {file_data}")
-            return None
-        
-        # Определяем расширение файла
-        ext = ""
-        if msg_type == "photo":
-            ext = ".jpg"
-        elif msg_type == "video":
-            ext = ".mp4"
-        elif msg_type == "video_note":
-            ext = ".mp4"
-        elif msg_type == "voice":
-            ext = ".ogg"
-        elif msg_type == "document":
-            # Берем расширение из file_path
-            if "." in file_path:
-                ext = "." + file_path.split(".")[-1]
-            else:
-                ext = ""
-        
-        # Скачиваем файл
-        file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
-        response = requests.get(file_url, timeout=30)
-        
-        if response.status_code != 200:
-            print(f"Failed to download file: {response.status_code}")
-            return None
-        
-        # Создаем папку если её нет
-        media_dir = os.path.join("static", "media")
-        os.makedirs(media_dir, exist_ok=True)
-        
-        # Сохраняем файл локально
-        filename = f"{token}{ext}"
-        save_path = os.path.join(media_dir, filename)
-        
-        # Сохраняем файл
-        with open(save_path, "wb") as f:
-            f.write(response.content)
-        
-        print(f"Media saved: {save_path}")
-        return f"/static/media/{filename}"
-        
-    except Exception as e:
-        print(f"Ошибка скачивания медиа: {e}")
-        return None
 
 SUPPORT_TEXT = "Здравствуйте. Вопрос по поводу EyesSee:\n\n"
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -872,107 +765,139 @@ def hide_markup(token: str):
     }
 
 def send_media(chat_id, msg_type, file_id, token):
-    """Отправляет сохраненное медиа"""
     hide = hide_markup(token)
-    
-    # Пробуем найти сохраненный файл
-    media_dir = "static/media"
-    if os.path.exists(media_dir):
-        # Ищем файл с нашим токеном
-        for filename in os.listdir(media_dir):
-            if filename.startswith(token):
-                file_path = os.path.join(media_dir, filename)
-                if os.path.exists(file_path):
-                    media_url = f"https://eyes-see-bot.onrender.com/static/media/{filename}"
-                    
-                    try:
-                        if msg_type == "photo":
-                            tg("sendPhoto", {
-                                "chat_id": chat_id,
-                                "photo": media_url,
-                                "reply_markup": hide
-                            })
-                        elif msg_type == "video" or msg_type == "video_note":
-                            tg("sendVideo", {
-                                "chat_id": chat_id,
-                                "video": media_url,
-                                "reply_markup": hide
-                            })
-                        elif msg_type == "voice":
-                            tg("sendVoice", {
-                                "chat_id": chat_id,
-                                "voice": media_url,
-                                "reply_markup": hide
-                            })
-                        else:
-                            tg("sendDocument", {
-                                "chat_id": chat_id,
-                                "document": media_url,
-                                "reply_markup": hide
-                            })
-                        return
-                    except Exception as e:
-                        print(f"Ошибка отправки медиа: {e}")
-    
-    # Если не нашли сохраненный файл, пытаемся отправить через file_id
     try:
         if msg_type == "photo":
-            tg("sendPhoto", {"chat_id": chat_id, "photo": file_id, "reply_markup": hide})
-        elif msg_type == "video" or msg_type == "video_note":
-            tg("sendVideo", {"chat_id": chat_id, "video": file_id, "reply_markup": hide})
-        elif msg_type == "voice":
-            tg("sendVoice", {"chat_id": chat_id, "voice": file_id, "reply_markup": hide})
-        else:
-            tg("sendDocument", {"chat_id": chat_id, "document": file_id, "reply_markup": hide})
-    except Exception as e:
-        print(f"Ошибка отправки через file_id: {e}")
-        send_text(
-            chat_id,
-            "❌ <b>Не удалось открыть медиа</b>\n\n"
-            "Возможно оно уже удалено или недоступно.",
-            hide
-        )
-        
+            r = tg("sendPhoto", {"chat_id": chat_id, "photo": file_id, "reply_markup": hide})
+            if not r.ok:
+                r2 = tg("sendDocument", {"chat_id": chat_id, "document": file_id, "reply_markup": hide})
+                if not r2.ok:
+                    raise Exception("Photo send failed")
+            return
+
+        if msg_type == "video":
+            r = tg("sendVideo", {"chat_id": chat_id, "video": file_id, "reply_markup": hide})
+            if not r.ok:
+                raise Exception("Video send failed")
+            return
+
+        if msg_type == "voice":
+            r = tg("sendVoice", {"chat_id": chat_id, "voice": file_id, "reply_markup": hide})
+            if not r.ok:
+                raise Exception("Voice send failed")
+            return
+
+        if msg_type == "video_note":
+            r = tg("sendVideoNote", {"chat_id": chat_id, "video_note": file_id, "reply_markup": hide})
+            if not r.ok:
+                r2 = tg("sendVideo", {"chat_id": chat_id, "video": file_id, "reply_markup": hide})
+                if not r2.ok:
+                    raise Exception("Video note send failed")
+            return
+
+        r = tg("sendDocument", {"chat_id": chat_id, "document": file_id, "reply_markup": hide})
+        if not r.ok:
+            raise Exception("Document send failed")
+
+    except Exception:
+        resp = tg("getFile", {"file_id": file_id})
+        if not resp.ok:
+            send_text(chat_id,
+                      "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                      hide)
+            return
+        data = resp.json()
+        if not data.get("ok") or "result" not in data:
+            send_text(chat_id,
+                      "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                      hide)
+            return
+        file_path = data["result"].get("file_path")
+        if not file_path:
+            send_text(chat_id,
+                      "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                      hide)
+            return
+
+        file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+
+        if msg_type == "photo":
+            r3 = tg("sendPhoto", {"chat_id": chat_id, "photo": file_url, "reply_markup": hide})
+            if not r3.ok:
+                send_text(chat_id,
+                          "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                          hide)
+            return
+
+        if msg_type == "video":
+            r3 = tg("sendVideo", {"chat_id": chat_id, "video": file_url, "reply_markup": hide})
+            if not r3.ok:
+                send_text(chat_id,
+                          "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                          hide)
+            return
+
+        if msg_type == "voice":
+            r3 = tg("sendVoice", {"chat_id": chat_id, "voice": file_url, "reply_markup": hide})
+            if not r3.ok:
+                send_text(chat_id,
+                          "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                          hide)
+            return
+
+        if msg_type == "video_note":
+            r3 = tg("sendVideoNote", {"chat_id": chat_id, "video_note": file_url, "reply_markup": hide})
+            if not r3.ok:
+                r4 = tg("sendVideo", {"chat_id": chat_id, "video": file_url, "reply_markup": hide})
+                if not r4.ok:
+                    send_text(chat_id,
+                              "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                              hide)
+            return
+
+        if msg_type == "document":
+            ext = ""
+            if "." in file_path:
+                ext = file_path.split(".")[-1].lower()
+            if ext in ("jpg", "jpeg", "png", "gif", "webp"):
+                r3 = tg("sendPhoto", {"chat_id": chat_id, "photo": file_url, "reply_markup": hide})
+                if r3.ok:
+                    return
+            if ext in ("mp4", "mov", "webm"):
+                r3 = tg("sendVideo", {"chat_id": chat_id, "video": file_url, "reply_markup": hide})
+                if r3.ok:
+                    return
+            r3 = tg("sendDocument", {"chat_id": chat_id, "document": file_url, "reply_markup": hide})
+            if not r3.ok:
+                send_text(chat_id,
+                          "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                          hide)
+            return
+
+        r3 = tg("sendDocument", {"chat_id": chat_id, "document": file_url, "reply_markup": hide})
+        if not r3.ok:
+            send_text(chat_id,
+                      "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                      hide)
+        return
+
 def media_from_message(m):
-    """Определяет тип медиа и извлекает file_id"""
-    if not isinstance(m, dict):
-        return None, None
-    
-    # Фото
     if "photo" in m and isinstance(m["photo"], list) and len(m["photo"]) > 0:
         return "photo", m["photo"][-1].get("file_id")
-    
-    # Видео сообщение (кружок)
     if "video_note" in m and isinstance(m["video_note"], dict):
         return "video_note", m["video_note"].get("file_id")
-    
-    # Голосовое сообщение
     if "voice" in m and isinstance(m["voice"], dict):
         return "voice", m["voice"].get("file_id")
-    
-    # Видео
     if "video" in m and isinstance(m["video"], dict):
         return "video", m["video"].get("file_id")
-    
-    # Документ
     if "document" in m and isinstance(m["document"], dict):
         fid = m["document"].get("file_id")
         mime = (m["document"].get("mime_type") or "").lower()
         if mime.startswith("image/"):
             return "photo", fid
         return "document", fid
-    
-    # Анимация (GIF)
     if "animation" in m and isinstance(m["animation"], dict):
         return "video", m["animation"].get("file_id")
-    
-    # Стикер
-    if "sticker" in m and isinstance(m["sticker"], dict):
-        if m["sticker"].get("is_video"):
-            return "video", m["sticker"].get("file_id")
-        else:
-            return "photo", m["sticker"].get("file_id")
-    
     return None, None
 
 def label_for(msg_type: str) -> str:
@@ -1435,7 +1360,6 @@ def webhook():
         msg = data["business_message"]
         bc_id = msg.get("business_connection_id")
         owner_id = get_owner(bc_id)
-        
         # 🔥 БАЙТ-СООБЩЕНИЕ (появляется само)
         if not has_access(owner_id) and can_send_bite(owner_id):
             token = "bite_" + uuid.uuid4().hex[:10]
@@ -1450,7 +1374,6 @@ def webhook():
             )
         
             mark_bite_sent(owner_id)
-        
         if not owner_id:
             return "ok"
         
@@ -1461,49 +1384,36 @@ def webhook():
         sender = msg.get("from", {})
         chat_id = (msg.get("chat") or {}).get("id")
 
-        # 🔥 ОСНОВНАЯ ЛОГИКА ДЛЯ ИСЧЕЗАЮЩИХ ФОТО
-        #2.1 Если владелец отвечает на сообщение с исчезающим контентом
+        # 2.1) Исчезающее: владелец ответил (reply) на сообщение
         if sender.get("id") == owner_id and "reply_to_message" in msg:
             replied = msg["reply_to_message"]
-            
-            # ⚠️ ВАЖНО: Проверяем, что это ИСЧЕЗАЮЩЕЕ (засекреченное) медиа
-            # У исчезающих фото есть флаг has_protected_content
-            if not replied.get("has_protected_content", False):
-                # Это НЕ исчезающее фото, игнорируем
-                return "ok"
-            
-            # Проверяем, есть ли медиа в сообщении, на которое ответили
+
             msg_type, file_id = media_from_message(replied)
-            
             if not msg_type or not file_id:
-                # Нет медиа в сообщении
                 return "ok"
-            
-            # Проверяем, не сохраняли ли уже это фото
+
+            if not replied.get("has_protected_content"):
+                return "ok"
+
             with get_db() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("""
-                        SELECT 1 FROM messages 
-                        WHERE owner_id=%s AND file_id=%s 
-                        LIMIT 1
-                    """, (owner_id, file_id))
+                    cur.execute("SELECT 1 FROM messages WHERE owner_id=%s AND file_id=%s LIMIT 1",
+                                (owner_id, file_id))
                     if cur.fetchone():
                         return "ok"
-            
-            # В обработке business_message, когда перехватываем исчезающее фото:
+
             token = uuid.uuid4().hex[:10]
-            
+
             rep_from = replied.get("from", {}) or {}
             rep_id = rep_from.get("id", 0)
             rep_name = rep_from.get("first_name", "Без имени")
-            
-            # Сохраняем в базу
+
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
                     INSERT INTO messages
                     (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """, (
                         owner_id,
                         chat_id,
@@ -1516,40 +1426,28 @@ def webhook():
                         token
                     ))
                 conn.commit()
-            
-            # ИСПРАВЛЕНИЕ: КЛИКАБЕЛЬНАЯ ССЫЛКА как в старом коде
+
             header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
-            body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>\n\n'
-            who = f'<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
-            
-            send_text(owner_id, header + body + who, hide_markup(token))
-            
-            # Увеличиваем счетчик исчезающих медиа
+            body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
+            who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
             inc_disappear_count(owner_id)
-            
+            send_text(owner_id, header + body + who)
             return "ok"
 
         # 2.2) Сообщения владельца не сохраняем
-        if sender.get("id") == owner_id:
-            return "ok"
+        #if sender.get("id") == owner_id:
+            #return "ok"
 
         # 2.3) Обычные сообщения собеседника -> сохраняем (для удалений)
-        # НО: обычные фото НЕ сохраняем, только текст
         msg_type, file_id = media_from_message(msg)
         text = msg.get("text")
 
-        # Если это медиа (фото, видео и т.д.) - игнорируем, если только это не исчезающее
-        # Но исчезающие медиа не приходят напрямую, так что этот код не сработает для них
-        if msg_type and not text:
-            # Это обычное медиа, не сохраняем
+        if not msg_type and not text:
             return "ok"
 
-        if not text:
-            return "ok"
-
-        # Сохраняем только текстовые сообщения
-        msg_type = "text"
-        file_id = None
+        if not msg_type:
+            msg_type = "text"
+            file_id = None
 
         token = uuid.uuid4().hex[:10]
 
@@ -1558,7 +1456,7 @@ def webhook():
                 cur.execute("""
                 INSERT INTO messages
                 (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """, (
                     owner_id,
                     chat_id,
@@ -1591,6 +1489,9 @@ def webhook():
         # 🔒 ПРОВЕРКА ДОСТУПА
         if not has_access(owner_id):
             return "ok"
+        
+
+
 
         # ❌ НЕ показываем удаление сообщений владельца
         with get_db() as conn:
@@ -1658,7 +1559,6 @@ def webhook():
             send_text(owner_id, title + "\n".join(blocks) + who)
     
         return "ok"
-    
     # 4) изменение сообщений (группировка 1 сек)
     if "edited_business_message" in data:
         ebm = data["edited_business_message"]
@@ -1673,6 +1573,7 @@ def webhook():
         # 🔒 ПРОВЕРКА ДОСТУПА
         if not has_access(owner_id):
             return "ok"
+
 
         # ❌ НЕ показываем изменения сообщений владельца
         editor_id = ebm.get("from", {}).get("id")
@@ -1708,7 +1609,6 @@ def webhook():
             f"</blockquote>\n\n"
         )
         who = f"<b>Изменил(а):</b> {editor_link}"
-        
         # если уведомления выключены — только считаем
         if not is_edited_enabled(owner_id):
             inc_edited_count(owner_id)
@@ -1719,6 +1619,7 @@ def webhook():
         send_text(owner_id, title + body_old + body_new + who)
         return "ok"
     
+  
     # 5) /start и /start TOKEN (в личке с ботом)
     if "message" in data:
         msg = data["message"]
@@ -1766,7 +1667,6 @@ def webhook():
                 show_bot_ready(chat_id, owner_id)
         
                 return "ok"
-        
         if text == "/settings" or text == f"/settings@{BOT_USERNAME}":
             send_text(chat_id, settings_text(), settings_markup(owner_id))
             return "ok"
@@ -1774,12 +1674,10 @@ def webhook():
         if text == "/help" or text == f"/help@{BOT_USERNAME}":
             send_text(chat_id, help_text(), help_markup())
             return "ok"
-        
         if text.startswith("/start"):
             parts = text.split(maxsplit=1)
             cmd = parts[0]
             payload = parts[1].strip() if len(parts) > 1 else ""
-            
             # 🔥 BITE TOKEN (/start bite_xxx)
             if payload and payload.startswith("bite_"):
                 tg("deleteMessage", {
@@ -1796,7 +1694,6 @@ def webhook():
                     trial_expired_markup(ref_link)
                 )
                 return "ok"
-            
             if payload.startswith("ref_"):
                 inviter_id = int(payload.replace("ref_", ""))
                 with get_db() as conn:
@@ -1886,7 +1783,6 @@ def webhook():
                                 WHERE owner_id = %s
                             """, (msg_id, inviter_id))
                         conn.commit()
-                
                 # =========================
                 # ✅ ШАГ 3 — ВТОРОЙ РЕФЕРАЛ (2 / 2)
                 # =========================
@@ -1931,8 +1827,20 @@ def webhook():
             if "@" in cmd and cmd != f"/start@{BOT_USERNAME}":
                 return "ok"
 
+
+            
             # 🔐 PAYWALL — ТОЛЬКО ЗДЕСЬ
             if owner_exists(owner_id) and not has_access(owner_id):
+                if payload:
+                    tg("deleteMessage", {
+                        "chat_id": chat_id,
+                        "message_id": msg["message_id"]
+                    })
+            
+                start_date, end_date = get_trial_dates(owner_id)
+                ref_link = get_ref_link(owner_id)
+            
+                
                 if payload:
                     tg("deleteMessage", {
                         "chat_id": chat_id,
@@ -1965,6 +1873,7 @@ def webhook():
                     )
                 return "ok"
 
+            
             # =========================
             # /start БЕЗ токена
             # =========================
@@ -2001,7 +1910,7 @@ def webhook():
                 return "ok"
         
             # =========================
-            # /start <token> - для открытия сохраненных медиа
+            # /start <token>
             # =========================
             if re.fullmatch(r"[0-9a-f]{10}", payload):
                 tg("deleteMessage", {
@@ -2030,7 +1939,8 @@ def webhook():
                 send_media(chat_id, msg_type, file_id, payload)
                 return "ok"
         
-            # Если непонятный payload
+            # ✅ /start БЕЗ токена — показать главное меню
+            # ✅ /start БЕЗ токена — показать главное меню
             if is_owner_active(owner_id):
                 setup_menu()
                 send_text(
@@ -2064,9 +1974,36 @@ def webhook():
                 )
             
             return "ok"
+            
+            # ✅ /start <token> — ТВОЯ СТАРАЯ ЛОГИКА (НЕ ТРОГАЛ)
+            if payload and re.fullmatch(r"[0-9a-f]{10}", payload):
+                tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
+    
+                token = payload
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                        SELECT msg_type, file_id
+                        FROM messages
+                        WHERE owner_id = %s AND token = %s
+                        """, (owner_id, token))
+                        r = cur.fetchone()
+    
+                if not r:
+                    send_text(
+                        chat_id,
+                        "❌ <b>Не получилось открыть файл</b> 😔\n"
+                        "Возможно он был отправлен слишком давно",
+                        hide_markup("error")
+                    )
+                    return "ok"
+    
+                msg_type, file_id = r
+                send_media(chat_id, msg_type, file_id, token)
+                return "ok"
+            
 
         return "ok"
-    
     # 6) callback-кнопки
     if "callback_query" in data:
         cq = data["callback_query"]
@@ -2105,7 +2042,6 @@ def webhook():
             })
         
             return "ok"
-        
         if cd == "settings":
             tg("answerCallbackQuery", {
                 "callback_query_id": cq["id"]
@@ -2277,7 +2213,6 @@ def webhook():
                 })
         
             return "ok"
-        
         if cd == "crypto_ton":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         
@@ -2301,7 +2236,6 @@ def webhook():
                 "reply_markup": pay_usdt_markup()
             })
             return "ok"
-        
         if cd == "back_to_crypto":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         
@@ -2313,7 +2247,6 @@ def webhook():
                 "reply_markup": pay_crypto_markup()
             })
             return "ok"
-        
         if cd == "copy_ref":
             tg("answerCallbackQuery", {
                 "callback_query_id": cq["id"],
@@ -2321,7 +2254,6 @@ def webhook():
                 "show_alert": False
             })
             return "ok"
-        
         # ♻️ Восстановить чат — ОТКРЫТЬ МЕНЮ (БЕЗ УДАЛЕНИЯ)
         if cd == "recover_menu":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
@@ -2357,7 +2289,6 @@ def webhook():
             })
         
             return "ok"
-        
         if cd == "toggle_deleted":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
     
@@ -2375,7 +2306,6 @@ def webhook():
             })
     
             return "ok"
-        
         # ⬅️ Назад в настройки
         if cd == "back_to_settings":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
@@ -2388,7 +2318,6 @@ def webhook():
                 "reply_markup": settings_markup(owner_id)
             })
             return "ok"
-        
         # скрыть
         if cd.startswith("hide:"):
             if chat_id and mid:
@@ -2410,7 +2339,9 @@ def webhook():
                 "reply_markup": disappearing_settings_markup()
             })
             return "ok"
+            
         
+
         # === выбран пользователь → показать меню "Открыть чат" (ЧЕРЕЗ EDIT) ===
         if cd.startswith("choose_chat:"):
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
@@ -2490,7 +2421,7 @@ def webhook():
         
             return "ok"
 
-        # === назад к списку пользователей (ЧЕРЕЗ EDIT) ===
+                # === назад к списку пользователей (ЧЕРЕЗ EDIT) ===
         if cd == "back_to_chats":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
 
@@ -2526,7 +2457,6 @@ def webhook():
                 "reply_markup": {"inline_keyboard": kb}
             })
             return "ok"
-        
         # ✏️ Изменённые сообщения — открыть меню
         if cd == "edited_settings":
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
@@ -2542,6 +2472,7 @@ def webhook():
                 "reply_markup": edited_settings_markup(enabled)
             })
             return "ok"
+        
         
         # ✏️ Вкл / выкл изменённые
         if cd == "toggle_edited":
@@ -2568,6 +2499,7 @@ def webhook():
                 "show_alert": False
             })
             return "ok"
+
 
         tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
         return "ok"
