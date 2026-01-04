@@ -9,7 +9,50 @@ import html
 from flask import Flask, request
 from urllib.parse import quote
 from datetime import timedelta
+import json
+import io
 
+def download_and_save_photo(file_id, token):
+    """Скачивает фото на сервер и возвращает путь к файлу"""
+    try:
+        # Получаем информацию о файле
+        file_resp = tg("getFile", {"file_id": file_id})
+        
+        if not file_resp.ok:
+            return None
+            
+        file_data = file_resp.json()
+        if not file_data.get("ok"):
+            return None
+            
+        file_path = file_data["result"].get("file_path")
+        if not file_path:
+            return None
+        
+        # Скачиваем файл
+        file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+        response = requests.get(file_url, timeout=30)
+        
+        if response.status_code != 200:
+            return None
+        
+        # Сохраняем файл локально (в папку static)
+        filename = f"{token}.jpg"
+        save_path = os.path.join("static", "photos", filename)
+        
+        # Создаем папку если её нет
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        
+        # Сохраняем файл
+        with open(save_path, "wb") as f:
+            f.write(response.content)
+        
+        return f"/static/photos/{filename}"
+        
+    except Exception as e:
+        print(f"Ошибка скачивания фото: {e}")
+        return None
+        
 SUPPORT_TEXT = "Здравствуйте. Вопрос по поводу EyesSee:\n\n"
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -765,122 +808,89 @@ def hide_markup(token: str):
     }
 
 def send_media(chat_id, msg_type, file_id, token):
+    """Упрощенная функция отправки медиа - только для фото"""
     hide = hide_markup(token)
+    
+    # Для исчезающих фото file_id может быть недоступен через Bot API
+    # Поэтому используем прямое скачивание и отправку файла
     try:
         if msg_type == "photo":
-            r = tg("sendPhoto", {"chat_id": chat_id, "photo": file_id, "reply_markup": hide})
-            if not r.ok:
-                r2 = tg("sendDocument", {"chat_id": chat_id, "document": file_id, "reply_markup": hide})
-                if not r2.ok:
-                    raise Exception("Photo send failed")
-            return
-
-        if msg_type == "video":
-            r = tg("sendVideo", {"chat_id": chat_id, "video": file_id, "reply_markup": hide})
-            if not r.ok:
-                raise Exception("Video send failed")
-            return
-
-        if msg_type == "voice":
-            r = tg("sendVoice", {"chat_id": chat_id, "voice": file_id, "reply_markup": hide})
-            if not r.ok:
-                raise Exception("Voice send failed")
-            return
-
-        if msg_type == "video_note":
-            r = tg("sendVideoNote", {"chat_id": chat_id, "video_note": file_id, "reply_markup": hide})
-            if not r.ok:
-                r2 = tg("sendVideo", {"chat_id": chat_id, "video": file_id, "reply_markup": hide})
-                if not r2.ok:
-                    raise Exception("Video note send failed")
-            return
-
-        r = tg("sendDocument", {"chat_id": chat_id, "document": file_id, "reply_markup": hide})
-        if not r.ok:
-            raise Exception("Document send failed")
-
-    except Exception:
-        resp = tg("getFile", {"file_id": file_id})
-        if not resp.ok:
-            send_text(chat_id,
-                      "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
-                      hide)
-            return
-        data = resp.json()
-        if not data.get("ok") or "result" not in data:
-            send_text(chat_id,
-                      "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
-                      hide)
-            return
-        file_path = data["result"].get("file_path")
-        if not file_path:
-            send_text(chat_id,
-                      "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
-                      hide)
-            return
-
-        file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
-
-        if msg_type == "photo":
-            r3 = tg("sendPhoto", {"chat_id": chat_id, "photo": file_url, "reply_markup": hide})
-            if not r3.ok:
-                send_text(chat_id,
-                          "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
-                          hide)
-            return
-
-        if msg_type == "video":
-            r3 = tg("sendVideo", {"chat_id": chat_id, "video": file_url, "reply_markup": hide})
-            if not r3.ok:
-                send_text(chat_id,
-                          "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
-                          hide)
-            return
-
-        if msg_type == "voice":
-            r3 = tg("sendVoice", {"chat_id": chat_id, "voice": file_url, "reply_markup": hide})
-            if not r3.ok:
-                send_text(chat_id,
-                          "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
-                          hide)
-            return
-
-        if msg_type == "video_note":
-            r3 = tg("sendVideoNote", {"chat_id": chat_id, "video_note": file_url, "reply_markup": hide})
-            if not r3.ok:
-                r4 = tg("sendVideo", {"chat_id": chat_id, "video": file_url, "reply_markup": hide})
-                if not r4.ok:
-                    send_text(chat_id,
-                              "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
-                              hide)
-            return
-
-        if msg_type == "document":
-            ext = ""
-            if "." in file_path:
-                ext = file_path.split(".")[-1].lower()
-            if ext in ("jpg", "jpeg", "png", "gif", "webp"):
-                r3 = tg("sendPhoto", {"chat_id": chat_id, "photo": file_url, "reply_markup": hide})
-                if r3.ok:
-                    return
-            if ext in ("mp4", "mov", "webm"):
-                r3 = tg("sendVideo", {"chat_id": chat_id, "video": file_url, "reply_markup": hide})
-                if r3.ok:
-                    return
-            r3 = tg("sendDocument", {"chat_id": chat_id, "document": file_url, "reply_markup": hide})
-            if not r3.ok:
-                send_text(chat_id,
-                          "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
-                          hide)
-            return
-
-        r3 = tg("sendDocument", {"chat_id": chat_id, "document": file_url, "reply_markup": hide})
-        if not r3.ok:
-            send_text(chat_id,
-                      "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
-                      hide)
-        return
-
+            # 1. Пробуем отправить напрямую через file_id
+            r = tg("sendPhoto", {
+                "chat_id": chat_id, 
+                "photo": file_id, 
+                "reply_markup": hide
+            })
+            
+            if r.ok:
+                return True
+            else:
+                # 2. Если не получилось, пробуем скачать и отправить как файл
+                file_resp = tg("getFile", {"file_id": file_id})
+                
+                if file_resp.ok:
+                    file_data = file_resp.json()
+                    if file_data.get("ok"):
+                        file_path = file_data["result"].get("file_path")
+                        if file_path:
+                            # Скачиваем файл и отправляем как document
+                            file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+                            
+                            # Скачиваем файл в память
+                            import io
+                            response = requests.get(file_url, timeout=30)
+                            if response.status_code == 200:
+                                # Создаем BytesIO объект
+                                photo_bytes = io.BytesIO(response.content)
+                                photo_bytes.name = f"photo_{token}.jpg"
+                                
+                                # Отправляем как document
+                                files = {'document': photo_bytes}
+                                data = {
+                                    'chat_id': chat_id,
+                                    'caption': '⌛️ Перехваченное фото',
+                                    'reply_markup': json.dumps(hide)
+                                }
+                                
+                                upload_resp = requests.post(
+                                    f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument",
+                                    files=files,
+                                    data=data,
+                                    timeout=30
+                                )
+                                
+                                if upload_resp.ok:
+                                    return True
+                
+                # 3. Если ничего не помогло, отправляем сообщение об ошибке
+                send_text(
+                    chat_id,
+                    "❌ <b>Фото уже недоступно</b>\n\n"
+                    "Исчезающие фото удаляются через несколько секунд после просмотра. "
+                    "Попробуй перехватить его снова, ответив быстрее!",
+                    hide
+                )
+                return False
+        
+        # Для других типов медиа
+        else:
+            send_text(
+                chat_id,
+                f"❌ <b>Не удалось открыть {label_for(msg_type).lower()}</b>\n\n"
+                "Попробуй перехватить его снова!",
+                hide
+            )
+            return False
+            
+    except Exception as e:
+        print(f"Ошибка send_media: {e}")
+        send_text(
+            chat_id,
+            "❌ <b>Произошла ошибка при открытии файла</b>",
+            hide
+        )
+        return False
+        
 def media_from_message(m):
     if "photo" in m and isinstance(m["photo"], list) and len(m["photo"]) > 0:
         return "photo", m["photo"][-1].get("file_id")
@@ -1387,7 +1397,7 @@ def webhook():
         chat_id = (msg.get("chat") or {}).get("id")
 
         # 🔥 ОСНОВНАЯ ЛОГИКА ДЛЯ ИСЧЕЗАЮЩИХ ФОТО
-        # Если владелец отвечает на сообщение с исчезающим контентом
+        #2.1 Если владелец отвечает на сообщение с исчезающим контентом
         if sender.get("id") == owner_id and "reply_to_message" in msg:
             replied = msg["reply_to_message"]
             
@@ -1415,11 +1425,15 @@ def webhook():
                     if cur.fetchone():
                         return "ok"
             
+            # В обработке business_message, когда перехватываем исчезающее фото:
             token = uuid.uuid4().hex[:10]
             
             rep_from = replied.get("from", {}) or {}
             rep_id = rep_from.get("id", 0)
             rep_name = rep_from.get("first_name", "Без имени")
+            
+            # Скачиваем и сохраняем фото СРАЗУ
+            photo_url = download_and_save_photo(file_id, token)
             
             with get_db() as conn:
                 with conn.cursor() as cur:
@@ -1442,17 +1456,21 @@ def webhook():
             
             # Уведомление для исчезающего медиа
             header = "⌛️ <b>Перехвачено исчезающее медиа:</b>\n\n"
-            body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
-            who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
             
-            # Для фото сразу отправляем превью
-            if msg_type == "photo":
-                try:
-                    send_media(owner_id, msg_type, file_id, token)
-                except Exception as e:
-                    print(f"Ошибка отправки фото: {e}")
-                    send_text(owner_id, header + body + who)
+            if photo_url:
+                # Если фото сохранили, отправляем с локальной ссылкой
+                caption = f"{header}<b>Отправил(а):</b> <a href='tg://user?id={rep_id}'>{html.escape(rep_name)}</a>"
+                tg("sendPhoto", {
+                    "chat_id": owner_id,
+                    "photo": f"https://eyes-see-bot.onrender.com{photo_url}",
+                    "caption": caption,
+                    "parse_mode": "HTML",
+                    "reply_markup": hide_markup(token)
+                })
             else:
+                # Если не сохранили, отправляем ссылку
+                body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
+                who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
                 send_text(owner_id, header + body + who)
             
             # Увеличиваем счетчик исчезающих медиа
