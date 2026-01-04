@@ -1517,9 +1517,9 @@ def webhook():
                     ))
                 conn.commit()
             
-            # ИСПРАВЛЕНИЕ: Используем старый формат из второго кода
+            # ИСПРАВЛЕНИЕ: КЛИКАБЕЛЬНАЯ ССЫЛКА как в старом коде
             header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
-            body = f'{label_for(msg_type)}\n\n'
+            body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>\n\n'
             who = f'<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
             
             send_text(owner_id, header + body + who, hide_markup(token))
