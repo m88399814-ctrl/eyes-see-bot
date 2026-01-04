@@ -303,7 +303,32 @@ def init_db():
             """)
             
         conn.commit()
-
+def cleanup_old():
+    """Очистка старых данных"""
+    # 1. Очищаем старые сообщения из базы (18 часов)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            DELETE FROM messages
+            WHERE created_at < NOW() - INTERVAL '18 hours'
+            """)
+        conn.commit()
+    
+    # 2. Очищаем старые медиафайлы с диска (2 часа)
+    try:
+        media_dir = "static/media"
+        if os.path.exists(media_dir):
+            current_time = time.time()
+            for filename in os.listdir(media_dir):
+                file_path = os.path.join(media_dir, filename)
+                if os.path.isfile(file_path):
+                    file_age = current_time - os.path.getmtime(file_path)
+                    if file_age > 7200:  # 2 часа
+                        os.remove(file_path)
+                        print(f"🗑️ Удалил старый медиафайл: {filename}")
+    except Exception as e:
+        print(f"❌ Ошибка при очистке медиа-файлов: {e}")
+        
 def is_payment_used(tx_hash: str) -> bool:
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -320,14 +345,6 @@ def mark_payment_used(tx_hash: str, owner_id: int):
             """, (tx_hash, owner_id))
         conn.commit()
 
-def cleanup_old():
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-            DELETE FROM messages
-            WHERE created_at < NOW() - INTERVAL '18 hours'
-            """)
-        conn.commit()
 
 def save_owner(bc_id: str, owner_id: int, is_active: bool = True):
     with get_db() as conn:
