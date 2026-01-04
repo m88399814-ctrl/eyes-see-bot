@@ -1496,49 +1496,7 @@ def webhook():
             rep_id = rep_from.get("id", 0)
             rep_name = rep_from.get("first_name", "Без имени")
             
-            # Скачиваем и сохраняем фото СРАЗУ
-            photo_url = download_and_save_photo(file_id, token)
             
-            with get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                    INSERT INTO messages
-                    (owner_id, chat_id, sender_id, sender_name, message_id, msg_type, text, file_id, token)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (
-                        owner_id,
-                        chat_id,
-                        rep_id,
-                        rep_name,
-                        replied.get("message_id", 0),
-                        msg_type,
-                        None,
-                        file_id,
-                        token
-                    ))
-                conn.commit()
-            
-            # Уведомление для исчезающего медиа
-            header = "⌛️ <b>Перехвачено исчезающее медиа:</b>\n\n"
-            
-            if photo_url:
-                # Если фото сохранили, отправляем с локальной ссылкой
-                caption = f"{header}<b>Отправил(а):</b> <a href='tg://user?id={rep_id}'>{html.escape(rep_name)}</a>"
-                tg("sendPhoto", {
-                    "chat_id": owner_id,
-                    "photo": f"https://eyes-see-bot.onrender.com{photo_url}",
-                    "caption": caption,
-                    "parse_mode": "HTML",
-                    "reply_markup": hide_markup(token)
-                })
-            else:
-                # Если не сохранили, отправляем ссылку
-                body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
-                who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
-                send_text(owner_id, header + body + who)
-            
-            # Увеличиваем счетчик исчезающих медиа
-            inc_disappear_count(owner_id)
 
             # После того как определили msg_type и file_id для исчезающего медиа:
             # Скачиваем и сохраняем медиа СРАЗУ
