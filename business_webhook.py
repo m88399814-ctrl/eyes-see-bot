@@ -1959,70 +1959,13 @@ def webhook():
                     return "ok"
         
                 msg_type, file_id = r
-                send_media(chat_id, msg_type, file_id, payload)
-                return "ok"
-        
-            # ✅ /start БЕЗ токена — показать главное меню
-            # ✅ /start БЕЗ токена — показать главное меню
-            if is_owner_active(owner_id):
-                setup_menu()
-                send_text(
+                send_media(
                     chat_id,
-                    "Бот работает, подключение есть — я\nготов следить за сообщениями 👁️",
-                    {
-                        "inline_keyboard": [[
-                            {"text": "⚙️ Настройки", "callback_data": "settings"}
-                        ]]
-                    }
+                    msg_type,
+                    file_id,
+                    payload,
+                    force_document=True  # 🔥 ОБЯЗАТЕЛЬНО
                 )
-            else:
-                send_photo(
-                    chat_id,
-                    CONNECT_PHOTO_URL,
-                    (
-                        "<b>Для работы бота нужно подключить его к аккаунту:</b>\n\n"
-                        "Настройки → Telegram для бизнеса → Чат-боты\n"
-                        "Вставь <code>EyesSeeBot</code> → Готово!"
-                    ),
-                    {
-                        "inline_keyboard": [[
-                            {
-                                "text": "📋 Скопировать",
-                                "web_app": {
-                                    "url": "https://eyes-see-bot.onrender.com/static/copy.html"
-                                }
-                            }
-                        ]]
-                    }
-                )
-            
-            return "ok"
-            
-            # ✅ /start <token> — ТВОЯ СТАРАЯ ЛОГИКА (НЕ ТРОГАЛ)
-            if payload and re.fullmatch(r"[0-9a-f]{10}", payload):
-                tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
-    
-                token = payload
-                with get_db() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("""
-                        SELECT msg_type, file_id
-                        FROM messages
-                        WHERE owner_id = %s AND token = %s
-                        """, (owner_id, token))
-                        r = cur.fetchone()
-    
-                if not r:
-                    send_text(
-                        chat_id,
-                        "❌ <b>Не получилось открыть файл</b> 😔\n"
-                        "Возможно он был отправлен слишком давно",
-                        hide_markup("error")
-                    )
-                    return "ok"
-    
-                msg_type, file_id = r
-                send_media(chat_id, msg_type, file_id, token)
                 return "ok"
             
 
