@@ -764,8 +764,25 @@ def hide_markup(token: str):
         ]
     }
 
-def send_media(chat_id, msg_type, file_id, token):
+def send_media(chat_id, msg_type, file_id, token, force_document=False):
     hide = hide_markup(token)
+
+    # 🔥 Для исчезающих/защищённых: ТОЛЬКО sendDocument по file_id
+    if force_document:
+        r = tg("sendDocument", {
+            "chat_id": chat_id,
+            "document": file_id,
+            "reply_markup": hide
+        })
+        if not r.ok:
+            send_text(
+                chat_id,
+                "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
+                hide
+            )
+        return
+
+    # ===== обычная логика (оставляем почти как у тебя) =====
     try:
         if msg_type == "photo":
             r = tg("sendPhoto", {"chat_id": chat_id, "photo": file_id, "reply_markup": hide})
@@ -800,6 +817,7 @@ def send_media(chat_id, msg_type, file_id, token):
             raise Exception("Document send failed")
 
     except Exception:
+        # твой fallback через getFile оставь как есть (для обычных кейсов)
         resp = tg("getFile", {"file_id": file_id})
         if not resp.ok:
             send_text(chat_id,
@@ -880,7 +898,7 @@ def send_media(chat_id, msg_type, file_id, token):
                       "❌ <b>Не получилось открыть файл</b> 😔\nВозможно он уже исчез / недоступен",
                       hide)
         return
-
+        
 def media_from_message(m):
     if "photo" in m and isinstance(m["photo"], list) and len(m["photo"]) > 0:
         return "photo", m["photo"][-1].get("file_id")
@@ -1427,11 +1445,16 @@ def webhook():
                     ))
                 conn.commit()
 
-            header = "⌛️ <b>Новое исчезающее сообщение:</b>\n\n"
-            body = f'<a href="https://t.me/{BOT_USERNAME}?start={token}">{label_for(msg_type)}</a>'
-            who = f'\n\n<b>Отправил(а):</b> <a href="tg://user?id={rep_id}">{html.escape(rep_name)}</a>'
+            # сразу отправляем файл владельцу
+            send_media(
+                owner_id,
+                msg_type,
+                file_id,
+                token,
+                force_document=True  # 🔥 ВАЖНО
+            )
+            
             inc_disappear_count(owner_id)
-            send_text(owner_id, header + body + who)
             return "ok"
 
         # 2.2) Сообщения владельца не сохраняем
