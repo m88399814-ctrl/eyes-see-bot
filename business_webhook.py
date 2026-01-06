@@ -119,9 +119,10 @@ def download_and_save_media(file_id, token, msg_type):
 
 SUPPORT_TEXT = "Здравствуйте. Вопрос по поводу EyesSee:\n\n"
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+BASE_URL = "https://eyes-see-bot.onrender.com"  # <- ДОБАВЛЕНО ЗДЕСЬ
 DATABASE_URL = os.getenv("DATABASE_URL")
 BOT_USERNAME = "EyesSeeBot"  # без @
-CONNECT_PHOTO_URL = "https://eyes-see-bot.onrender.com/static/connect_bot.jpg"
+CONNECT_PHOTO_URL = f"{BASE_URL}/static/connect_bot.jpg"  # <- ИЗМЕНЕНО ЗДЕСЬ
 SUPPORT_ADMIN_USERNAME = "eyesseeadmin"  # <-- сюда ID админа
 TONCENTER_API_KEY = os.getenv("TONCENTER_API_KEY")  # ты уже добавил в Render
 TONCENTER_URL = "https://toncenter.com/api/v2"
@@ -925,7 +926,7 @@ def send_media(chat_id, msg_type, file_id, token):
             if filename.startswith(token):
                 file_path = os.path.join(media_dir, filename)
                 if os.path.exists(file_path):
-                    media_url = f"https://eyes-see-bot.onrender.com/static/media/{filename}"
+                    media_url = f"{BASE_URL}/static/media/{filename}"  # <- ИЗМЕНЕНО ЗДЕСЬ
                     
                     try:
                         if msg_type == "photo":
@@ -2076,7 +2077,7 @@ def webhook():
                             "inline_keyboard": [[
                                 {
                                   "text": "📋 Скопировать",
-                                  "web_app": { "url": "https://eyes-see-bot.onrender.com/static/copy.html" }
+                                  "web_app": { "url": f"{BASE_URL}/static/copy.html" }  # <- ИЗМЕНЕНО ЗДЕСЬ
                                 }
                             ]]
                         }
@@ -2141,7 +2142,7 @@ def webhook():
                             {
                                 "text": "📋 Скопировать",
                                 "web_app": {
-                                    "url": "https://eyes-see-bot.onrender.com/static/copy.html"
+                                    "url": f"{BASE_URL}/static/copy.html"  # <- ИЗМЕНЕНО ЗДЕСЬ
                                 }
                             }
                         ]]
@@ -2547,7 +2548,7 @@ def webhook():
                 "inline_keyboard": [
                     [{
                         "text": "♻️ Восстановить чат",
-                        "web_app": { "url": f"https://eyes-see-bot.onrender.com/webapp?mode=restore&chat_id={biz_chat_id}&v=2" }
+                        "web_app": { "url": f"{BASE_URL}/webapp?mode=restore&chat_id={biz_chat_id}&v=2" }  # <- ИЗМЕНЕНО ЗДЕСЬ
                     }],
                     [{"text": "⬅️ Назад", "callback_data": "back_to_chats"}]
                 ]
